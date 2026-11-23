@@ -1,0 +1,26 @@
+{
+  "name": "chromalith",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Chromalith — a light-weaving puzzle. Slide rows and columns to route colored beams through mirrors, prisms and mixers. 1000 procedurally generated levels.",
+  "scripts": {
+    "build": "node scripts/check-version.mjs && node scripts/gen-levels.mjs && tsc --noEmit && node esbuild.mjs",
+    "build:web": "node esbuild.mjs",
+    "typecheck": "tsc --noEmit",
+    "gen:levels": "node scripts/gen-levels.mjs",
+    "test:levels": "node scripts/test-levels.mjs",
+    "check:version": "node scripts/check-version.mjs",
+    "icons": "python3 scripts/gen-icons.py",
+    "serve": "npx --yes serve docs -l 4173"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.2.0",
+    "@capacitor/core": "^6.2.0",
+    "@capacitor/haptics": "^6.0.1",
+    "@capacitor/ios": "^6.2.0",
+    "@capacitor/preferences": "^6.0.2",
+    "@capacitor/status-bar": "^6.0.1",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.7.2"
+  }
+}
