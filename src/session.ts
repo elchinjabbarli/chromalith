@@ -74,7 +74,7 @@ export class Session {
     // slide animation: cells that moved
     this.animateShift(axis, index, amt, m);
     sfx.slide();
-    if (platform.isNative() || true) platform.vibrate(8);
+    platform.vibrate(8);
 
     const after = sinkStats(this.board);
     if (after.ok > before.ok) {

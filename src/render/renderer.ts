@@ -358,6 +358,17 @@ export class Renderer {
         ctx.strokeStyle = exact ? '#ffffff' : hexA(colW, 0.7);
         ctx.lineWidth = 2;
         ctx.stroke();
+        // wrong-color warning ring: lit but not the exact hue
+        if (!exact && got !== 0) {
+          const wob = 0.5 + 0.5 * Math.sin(this.time * 7);
+          ctx.beginPath();
+          ctx.arc(0, 0, s * 0.44 + wob * 2, 0, Math.PI * 2);
+          ctx.strokeStyle = `rgba(255,107,125,${(0.35 + 0.4 * wob).toFixed(2)})`;
+          ctx.lineWidth = 2.5;
+          ctx.setLineDash([5, 4]);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
         // inner facet
         ctx.beginPath();
         for (let k = 0; k < 3; k++) {

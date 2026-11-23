@@ -7,11 +7,12 @@ import { simulate, sinkStats } from './core/sim';
 import { BIOMES, biomeFor, TOTAL_LEVELS } from './core/difficulty';
 import { Renderer } from './render/renderer';
 import { drawWinFx } from './render/fx';
+import { drawMenuLogo } from './render/logo';
 import { Session, Shift } from './session';
 import { loadSave, persistSave, SaveState, todayKey } from './systems/save';
 import { setLang, getLang, t, Lang } from './systems/i18n';
 import { sfx } from './systems/audio';
-import { platform } from './systems/platform';
+import { platform, setHapticsEnabled } from './systems/platform';
 import {
   HINT_COST, SOLVE_COST, levelGems, starsFor, interstitialEvery, canClaimDaily, applyDaily,
 } from './systems/economy';
@@ -359,8 +360,9 @@ function renderSettings(): void {
   $('set-haptics').classList.toggle('on', save.haptics);
   $('set-version').textContent = `v${VERSION}`;
   for (const l of ['en', 'tr', 'az'] as const) {
-    $('set-lang-' + l).classList.toggle('sel', getLang() === l);
+    $('set-lang-' + l).classList.toggle('sel', save.lang === l);
   }
+  $('set-lang-auto').classList.toggle('sel', save.lang === 'auto');
 }
 
 /* ------------------------------------------------------------------ */
@@ -553,6 +555,7 @@ async function boot(): Promise<void> {
   if (save.lang === 'auto') setLang('auto');
   sfx.enabled = save.sfx;
   sfx.musicEnabled = save.music;
+  setHapticsEnabled(save.haptics);
 
   canvas = $('game-canvas') as HTMLCanvasElement;
   renderer = new Renderer(canvas);
@@ -611,6 +614,7 @@ async function boot(): Promise<void> {
   });
   on('set-haptics', () => {
     save.haptics = !save.haptics;
+    setHapticsEnabled(save.haptics);
     persistSave(save);
     renderSettings();
   });
@@ -624,6 +628,14 @@ async function boot(): Promise<void> {
       retranslateStatics();
     });
   }
+  on('set-lang-auto', () => {
+    save.lang = 'auto';
+    setLang('auto');
+    persistSave(save);
+    renderSettings();
+    renderMainMenu();
+    retranslateStatics();
+  });
   on('set-reset', async () => {
     if (await confirmDialog(t('confirmReset'))) {
       localStorage.removeItem('chromalith.save.v1');
@@ -681,6 +693,7 @@ async function boot(): Promise<void> {
 
   retranslateStatics();
   renderMainMenu();
+  drawMenuLogo($('mm-logo') as HTMLCanvasElement);
   showScreen('screen-menu');
   layoutCanvas();
   lastT = performance.now();
@@ -689,6 +702,7 @@ async function boot(): Promise<void> {
 
 /** translate static DOM labels that exist before any screen render */
 function retranslateStatics(): void {
+  document.documentElement.lang = getLang();
   document.querySelectorAll('[data-i18n]').forEach(el => {
     const key = el.getAttribute('data-i18n')!;
     el.textContent = t(key as never);

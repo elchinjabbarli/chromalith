@@ -21,6 +21,12 @@ export interface Platform {
 
 /* ------------------------------------------------------------------ */
 
+/** global haptics gate so the settings toggle actually silences vibration */
+const hapticsState = { enabled: true };
+export function setHapticsEnabled(on: boolean): void {
+  hapticsState.enabled = on;
+}
+
 class WebPlatform implements Platform {
   isNative(): boolean { return false; }
   vibrate(): void { /* web vibration optional; skip to avoid noise */ }
@@ -92,6 +98,7 @@ class CapacitorPlatform implements Platform {
   isNative(): boolean { return true; }
 
   vibrate(ms: number | number[]): void {
+    if (!hapticsState.enabled) return;
     void this.haptics?.impact({ style: 1 });
     void navigator.vibrate?.(ms);
   }
