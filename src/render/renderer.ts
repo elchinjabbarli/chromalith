@@ -4,7 +4,7 @@
  */
 
 import { Board, Cell, Color, COLOR_HEX } from '../core/grid';
-import { SimResult } from '../core/sim';
+import { SimResult, BeamSeg } from '../core/sim';
 import { Biome } from '../core/difficulty';
 
 export interface Anim {
@@ -170,11 +170,19 @@ export class Renderer {
     if (anim && anim.moving.size > 0) return; // hide beams mid-slide
     ctx.save();
     ctx.lineCap = 'round';
-    for (const s of sim.segs) {
-      const color = COLOR_HEX[s.c] ?? '#fff';
-      const { cx: x1, cy: y1 } = this.cellCenter(s.x, s.y);
-      const x2 = x1 + [1, 0, -1, 0][s.d] * this.cell;
-      const y2 = y1 + [0, 1, 0, -1][s.d] * this.cell;
+
+    const px = (v: number): number => this.ox + v * this.cell;
+    const py = (v: number): number => this.oy + v * this.cell;
+    for (const sp of sim.spans) {
+      const color = COLOR_HEX[sp.c] ?? '#fff';
+      // drag preview shifts the beam with its cell
+      const pv = this.previewOffsets?.get(sp.cellIdx);
+      const dx = pv ? pv.dx : 0;
+      const dy = pv ? pv.dy : 0;
+      const x1 = px(sp.x1) + dx;
+      const y1 = py(sp.y1) + dy;
+      const x2 = px(sp.x2) + dx;
+      const y2 = py(sp.y2) + dy;
       // glow pass
       ctx.globalAlpha = 0.25;
       ctx.strokeStyle = color;
@@ -198,7 +206,7 @@ export class Renderer {
       const s = sim.segs[Math.floor(Math.random() * sim.segs.length)];
       const { cx, cy } = this.cellCenter(s.x, s.y);
       this.particles.push({
-        x: cx, y: cy, vx: 0, vy: 0, life: 0.35, maxLife: 0.35,
+        x: cx, y: cy, vx: 0, vy: 0, life: 0.5, maxLife: 0.5,
         color: COLOR_HEX[s.c] ?? '#fff', size: 1.6,
       });
     }

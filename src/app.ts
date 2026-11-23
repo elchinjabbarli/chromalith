@@ -136,6 +136,7 @@ function startLevel(n: number): void {
   }
   sfx.ambient(BIOMES.indexOf(biome));
   showScreen('screen-game');
+  maybeShowTutorial(n);
   requestAnimationFrame(() => {
     layoutCanvas();
     session?.renderer.layout(board, window.devicePixelRatio || 1);
@@ -146,6 +147,10 @@ function updateHud(ok: number, total: number): void {
   $('hud-sinks').textContent = `${ok}/${total}`;
   const s = session;
   if (s) $('hud-moves').textContent = `${s.moves} ${t('moves')}`;
+  updateHudGems();
+}
+
+function updateHudGems(): void {
   $('hud-gems').textContent = String(save.gems);
 }
 
@@ -153,7 +158,11 @@ function updateHud(ok: number, total: number): void {
 /* win flow                                                            */
 
 async function onLevelWon(n: number, moves: number, par: number): Promise<void> {
-  const stars = starsFor(moves, par);
+  const sol = session;
+  if (!sol || sol.levelNum !== n) return; // stale win from an earlier level
+  const stars = sol.usedSolve
+    ? 1
+    : starsFor(moves, par);
   const prevStars = save.stars[n] ?? 0;
   if (stars > prevStars) save.stars[n] = stars;
   const gained = levelGems(stars, n);
@@ -184,7 +193,8 @@ async function onLevelWon(n: number, moves: number, par: number): Promise<void> 
   const x2 = $('win-x2');
   x2.classList.remove('hidden');
   const nextBtn = $('win-next');
-  nextBtn.classList.toggle('hidden', n >= TOTAL_LEVELS);
+  const hasNext = n < TOTAL_LEVELS;
+  nextBtn.classList.toggle('hidden', !hasNext);
   showScreen('screen-win');
   // star pops
   for (let i = 1; i <= stars; i++) {
@@ -206,31 +216,35 @@ interface DragState {
   axis: 0 | 1 | null;
   lineIndex: number;
   dist: number; // accumulated px along axis
+  pointerId: number;
 }
 
 const drag: DragState = {
   active: false, startX: 0, startY: 0, cellX: -1, cellY: -1,
-  axis: null, lineIndex: -1, dist: 0,
+  axis: null, lineIndex: -1, dist: 0, pointerId: -1,
 };
 
 function onPointerDown(e: PointerEvent): void {
   if (!session || session.won) return;
+  if (drag.active) return; // second finger while dragging: ignore
   const rect = canvas.getBoundingClientRect();
   const px = e.clientX - rect.left;
   const py = e.clientY - rect.top;
   const cellPos = renderer.cellAtPoint(px, py, session.board);
   if (!cellPos) return;
   drag.active = true;
+  drag.pointerId = e.pointerId;
   drag.startX = px; drag.startY = py;
   drag.cellX = cellPos.x; drag.cellY = cellPos.y;
   drag.axis = null;
   drag.lineIndex = -1;
   drag.dist = 0;
-  canvas.setPointerCapture(e.pointerId);
+  try { canvas.setPointerCapture(e.pointerId); } catch { /* pointer gone */ }
 }
 
 function onPointerMove(e: PointerEvent): void {
   if (!drag.active || !session) return;
+  if (e.pointerId !== drag.pointerId) return;
   const rect = canvas.getBoundingClientRect();
   const px = e.clientX - rect.left;
   const py = e.clientY - rect.top;
@@ -252,12 +266,14 @@ function onPointerMove(e: PointerEvent): void {
   previewLine(drag.axis, drag.lineIndex, drag.dist);
 }
 
-function onPointerUp(): void {
+function onPointerUp(e: PointerEvent): void {
+  if (e.pointerId !== drag.pointerId) return;
   if (!drag.active || !session) {
     drag.active = false;
     return;
   }
   drag.active = false;
+  drag.pointerId = -1;
   clearPreview();
   if (drag.axis === null || drag.lineIndex < 0) return;
   const cell = renderer.cell;
@@ -477,23 +493,29 @@ function maybeShowTutorial(n: number): void {
 
 async function onHint(): Promise<void> {
   if (!session) return;
-  if (save.gems >= HINT_COST) {
-    save.gems -= HINT_COST;
-    persistSave(save);
-    if (!session.showHint()) {
-      toast(t('solveDesc'), '#ffd23f');
-    }
-    updateHud(0, 0);
-    const st = sinkStats(session.board);
-    updateHud(st.ok, st.total);
-  } else {
-    const ok = await platform.showRewarded();
-    if (ok && session.showHint()) sfx.gem();
+  // check BEFORE charging gems — a dead hint must never cost anything
+  const kind = session.peekHint();
+  if (kind === 'none') {
+    toast(t('solveDesc'), '#ffd23f');
+    return;
   }
+  const spend = async (): Promise<boolean> => {
+    if (save.gems >= HINT_COST) {
+      save.gems -= HINT_COST;
+      persistSave(save);
+      updateHudGems();
+      return true;
+    }
+    const ok = await platform.showRewarded();
+    if (ok) return true;
+    toast(t('solveDesc'), '#ffd23f');
+    return false;
+  };
+  if (await spend()) session.showHint();
 }
 
 async function onSolve(): Promise<void> {
-  if (!session) return;
+  if (!session || session.won) return;
   const useGems = save.gems >= SOLVE_COST;
   if (!useGems) {
     const ok = await platform.showRewarded();
@@ -501,13 +523,17 @@ async function onSolve(): Promise<void> {
   } else {
     save.gems -= SOLVE_COST;
     persistSave(save);
+    updateHudGems();
   }
+  session.usedSolve = true;
   // Lumo steps through the solution with a delay for visibility
   const step = (): void => {
     if (!session || session.won) return;
-    const more = session.applySolutionStep();
-    const st = sinkStats(session.board);
-    updateHud(st.ok, st.total);
+    let more = session.applyPlannedStep();
+    if (!more) {
+      // diverged from the stored path: fall back to greedy improvement
+      more = session.applyGreedyStep();
+    }
     if (more) setTimeout(step, 700);
   };
   step();
@@ -586,8 +612,7 @@ async function boot(): Promise<void> {
     });
   };
 
-  on('mm-play', () => { startLevel(save.level); maybeShowTutorial(save.level); });
-  on('mm-settings', () => { renderSettings(); showScreen('screen-settings'); });
+  on('mm-play', () => { startLevel(save.level); });  on('mm-settings', () => { renderSettings(); showScreen('screen-settings'); });
   on('mm-shop', () => { renderShop(); showScreen('screen-shop'); });
   on('mm-help', () => { renderHelp(); showScreen('screen-help'); });
   on('mm-daily', () => { renderDaily(); showScreen('screen-daily'); });
@@ -664,13 +689,13 @@ async function boot(): Promise<void> {
 
   on('pause-resume', () => showScreen('screen-game'));
   on('pause-restart', () => { session?.restart(); showScreen('screen-game'); });
-  on('pause-map', () => { returnScreen = 'screen-game'; renderMap(); showScreen('screen-map'); });
+  on('pause-map', () => { returnScreen = 'screen-pause'; renderMap(); showScreen('screen-map'); });
   on('pause-settings', () => { returnScreen = 'screen-pause'; renderSettings(); showScreen('screen-settings'); });
 
   on('win-next', () => {
     if (session) startLevel(Math.min(TOTAL_LEVELS, session.levelNum + 1));
   });
-  on('win-map', () => { renderMap(); showScreen('screen-map'); });
+  on('win-map', () => { returnScreen = 'screen-win'; renderMap(); showScreen('screen-map'); });
   on('win-x2', async () => {
     const ok = await platform.showRewarded();
     if (ok && session) {

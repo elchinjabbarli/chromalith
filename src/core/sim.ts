@@ -1,12 +1,17 @@
 /**
  * Beam simulation. Pure, deterministic, no DOM.
  *
- * A beam segment is (x, y, dir, color): it ENTERS cell (x,y) moving in dir.
+ * A beam segment is (x, y, d, c): it ENTERS cell (x,y) moving in dir d.
  * Sources emit; devices transform; sinks absorb and record color hits.
  * Mixers accumulate all incoming colors during a pass, then emit the OR of
  * everything they saw in that pass on the next pass (max 4 passes needed).
  * The state space is finite, so a visited-set cuts cycles while still
  * accumulating sink/mixer inputs.
+ *
+ * For rendering, every segment also gets a SPAN in cell units: where the
+ * beam starts (device center or entry edge) and where it stops (cell center
+ * for absorbers/deflectors, exit edge for straight passthrough). This is
+ * computed once per simulation so the 60fps draw loop does zero physics.
  */
 
 import { Board, Cell, Color, Dir, DX, DY, reflect } from './grid';
@@ -16,11 +21,26 @@ export interface BeamSeg {
   y: number;
   d: Dir;
   c: Color;
+  /** emitting cell — the beam starts at this cell's CENTER instead of the entry edge */
+  emit?: { ex: number; ey: number };
+}
+
+/** Render geometry of one segment, in cell units (cell corner = integer). */
+export interface BeamSpan {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  c: Color;
+  /** index of the cell this segment enters (for drag-preview offsets) */
+  cellIdx: number;
 }
 
 export interface SimResult {
-  /** segments in emission order, for rendering */
+  /** segments in emission order, for logic/debug */
   segs: BeamSeg[];
+  /** render spans, computed once, in the same order as segs */
+  spans: BeamSpan[];
   /** color mask that reached each sink, indexed by cell index */
   sinkHits: Map<number, Color>;
   /** all cells entered by any beam (for glow) */
@@ -39,6 +59,7 @@ interface MixEntry {
 
 export function simulate(b: Board): SimResult {
   const segs: BeamSeg[] = [];
+  const spans: BeamSpan[] = [];
   const sinkHits = new Map<number, Color>();
   const litCells = new Set<number>();
   const seen = new Set<number>();
@@ -49,19 +70,18 @@ export function simulate(b: Board): SimResult {
     for (let x = 0; x < b.w; x++) {
       const cell = b.cells[y * b.w + x];
       if (cell.kind === 'source') {
-        pending.push({ x, y, d: cell.dir, c: cell.color });
+        pending.push({ x, y, d: cell.dir, c: cell.color, emit: { ex: x, ey: y } });
       }
     }
   }
 
   // Mixer bookkeeping for the current pass.
-  let mixerIns: MixEntry[] = [];
   const mixerQueued = new Set<number>();
 
   let guard = 0;
   while (pending.length > 0 && guard++ < 4096) {
     const next: BeamSeg[] = [];
-    const nextMixers: MixEntry[] = [];
+    const mixerIns: MixEntry[] = [];
     for (const s of pending) {
       const k = stateKey(s.x, s.y, s.d, s.c);
       if (seen.has(k)) continue;
@@ -70,19 +90,14 @@ export function simulate(b: Board): SimResult {
       litCells.add(idx);
       segs.push(s);
       const cell = b.cells[idx];
-      const outs = stepCell(b, s, cell, sinkHits, nextMixers, mixerQueued, nextMixers);
+      const outs = stepCell(b, s, cell, sinkHits, mixerIns, mixerQueued);
+      // render span for this segment
+      spans.push(spanOf(b, s, outs, idx));
       for (const o of outs) {
         if (o.x >= 0 && o.y >= 0 && o.x < b.w && o.y < b.h) next.push(o);
       }
     }
-    // Flush mixers that received input this pass (queued set ensures one
-    // emission per mixer per pass, with the OR of all colors it saw).
-    const flushed: BeamSeg[] = [];
-    for (const m of nextMixers) {
-      void m;
-    }
-    mixerIns = nextMixers;
-    // Combine per-mixer colors and emit.
+    // Combine per-mixer colors and emit (one emission per mixer per pass).
     const byMixer = new Map<number, MixEntry>();
     for (const m of mixerIns) {
       const prev = byMixer.get(m.idx);
@@ -95,13 +110,41 @@ export function simulate(b: Board): SimResult {
       const nx = x + DX[m.dir];
       const ny = y + DY[m.dir];
       if (nx >= 0 && ny >= 0 && nx < b.w && ny < b.h) {
-        flushed.push({ x: nx, y: ny, d: m.dir, c: m.color });
+        next.push({ x: nx, y: ny, d: m.dir, c: m.color, emit: { ex: x, ey: y } });
       }
     }
     mixerQueued.clear();
-    pending = next.concat(flushed);
+    pending = next;
   }
-  return { segs, sinkHits, litCells };
+  return { segs, spans, sinkHits, litCells };
+}
+
+/** Geometry of one segment: entry → absorber/deflector center or exit edge. */
+function spanOf(b: Board, s: BeamSeg, outs: BeamSeg[], cellIdx: number): BeamSpan {
+  // start: emitting device center, or the edge the beam entered through
+  let x1: number;
+  let y1: number;
+  if (s.emit) {
+    x1 = s.emit.ex + 0.5;
+    y1 = s.emit.ey + 0.5;
+  } else {
+    x1 = s.x + 0.5 - DX[s.d] * 0.5;
+    y1 = s.y + 0.5 - DY[s.d] * 0.5;
+  }
+  // end: straight passthrough reaches the exit edge; anything that stops,
+  // bends or changes inside this cell terminates at the cell center.
+  const straight = outs.length === 1 && outs[0].d === s.d && outs[0].c === s.c;
+  let x2: number;
+  let y2: number;
+  if (straight) {
+    x2 = s.x + 0.5 + DX[s.d] * 0.5;
+    y2 = s.y + 0.5 + DY[s.d] * 0.5;
+  } else {
+    x2 = s.x + 0.5;
+    y2 = s.y + 0.5;
+  }
+  void b;
+  return { x1, y1, x2, y2, c: s.c, cellIdx };
 }
 
 /** Advance one beam through one cell; appends mixer inputs, returns outgoing beams. */
@@ -112,10 +155,16 @@ function stepCell(
   sinkHits: Map<number, Color>,
   mixerOut: MixEntry[],
   mixerQueued: Set<number>,
-  _unused: MixEntry[],
 ): BeamSeg[] {
   const idx = s.y * b.w + s.x;
-  const fwd = (d: Dir, c: Color): BeamSeg => ({ x: s.x + DX[d], y: s.y + DY[d], d, c });
+  /** beam leaving this cell; `emit` marks beams that start at the device center */
+  const fwd = (d: Dir, c: Color, emit = false): BeamSeg => ({
+    x: s.x + DX[d],
+    y: s.y + DY[d],
+    d,
+    c,
+    ...(emit ? { emit: { ex: s.x, ey: s.y } } : {}),
+  });
 
   switch (cell.kind) {
     case 'empty':
@@ -124,24 +173,24 @@ function stepCell(
     case 'block':
       return [];
     case 'mirror':
-      return [fwd(reflect(s.d, cell.dir as 0 | 1), s.c)];
+      return [fwd(reflect(s.d, cell.dir as 0 | 1), s.c, true)];
     case 'splitter': {
       const r = reflect(s.d, cell.dir as 0 | 1);
-      return [fwd(s.d, s.c), fwd(r, s.c)];
+      return [fwd(s.d, s.c, true), fwd(r, s.c, true)];
     }
     case 'filter': {
       const c = s.c & cell.color;
       if (c === 0) return [];
-      return [fwd(s.d, c)];
+      return [fwd(s.d, c, c !== s.c)];
     }
     case 'prism': {
       // spatial split relative to travel: R right, G straight, B left
       const left = ((s.d - 1 + 4) % 4) as Dir;
       const right = ((s.d + 1) % 4) as Dir;
       const out: BeamSeg[] = [];
-      if (s.c & 1) out.push(fwd(right, 1));
-      if (s.c & 2) out.push(fwd(s.d, 2));
-      if (s.c & 4) out.push(fwd(left, 4));
+      if (s.c & 1) out.push(fwd(right, 1, true));
+      if (s.c & 2) out.push(fwd(s.d, 2, true));
+      if (s.c & 4) out.push(fwd(left, 4, true));
       return out;
     }
     case 'mixer': {
@@ -179,7 +228,11 @@ export function isSolved(b: Board): boolean {
 
 /** Count sinks satisfied / total, and list unsatisfied indices. */
 export function sinkStats(b: Board): { ok: number; total: number; bad: number[] } {
-  const res = simulate(b);
+  return statsFromSim(b, simulate(b));
+}
+
+/** Same count, computed from an existing simulation result (no re-run). */
+export function statsFromSim(b: Board, res: SimResult): { ok: number; total: number; bad: number[] } {
   let ok = 0;
   const bad: number[] = [];
   for (let i = 0; i < b.cells.length; i++) {

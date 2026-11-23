@@ -273,14 +273,20 @@ body {
   align-items: center;
   gap: 14px;
   box-shadow: 0 24px 70px rgba(0, 0, 0, 0.5);
-  max-height: 86dvh;
+  max-height: 92dvh;
   overflow-y: auto;
 }
 .panel.small { width: min(86vw, 340px); }
 .panel h2 { font-size: 1.35rem; letter-spacing: 0.04em; }
 
-.win-panel { text-align: center; }
-#win-canvas { width: min(70vw, 300px); height: auto; }
+/* win panel must fit short viewports: compact canvas + tight spacing */
+.win-panel { text-align: center; padding: 18px 16px; gap: 8px; max-height: none; overflow: visible; }
+#win-canvas { width: 150px; height: 96px; flex: 0 0 auto; }
+.win-panel h2 { font-size: 1.2rem; }
+.win-stars { margin-top: -4px; }
+.star { font-size: 2.1rem; }
+#win-x2 { padding: 10px 16px; font-size: 0.85rem; white-space: nowrap; }
+.win-row { margin-top: 2px; }
 
 .win-stars { display: flex; gap: 14px; margin-top: -8px; }
 .star {
