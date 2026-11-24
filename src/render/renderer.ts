@@ -1,6 +1,14 @@
 /**
  * Canvas renderer — draws the board, devices, beams, particles and Lumo.
  * Everything is drawn procedurally (no image assets).
+ *
+ * v1.4 "Radiance" upgrade:
+ *  - three-pass beams (wide bloom + color body + white-hot core) with
+ *    flowing energy dashes and endpoint star glints
+ *  - faceted gems with specular highlights, solved crystals that beam light
+ *    upward (pillar) and pop with shockwave rings
+ *  - parallax starfield + drifting nebula behind the board, biome-tinted
+ *  - quality tier auto-degrades on slow devices (particle caps, star count)
  */
 
 import { Board, Cell, Color, COLOR_HEX } from '../core/grid';
@@ -24,11 +32,30 @@ export interface SlideState {
 export interface Particle {
   x: number; y: number; vx: number; vy: number;
   life: number; maxLife: number; color: string; size: number;
+  /** v1.4: sparkle particles render as 4-point stars, circles otherwise */
+  star?: boolean;
+  /** v1.4: no gravity for sparkle dust (floaty) */
+  floaty?: boolean;
 }
 
 export interface FloatText {
   x: number; y: number; text: string; life: number; color: string;
 }
+
+/** v1.4: expanding shockwave ring. */
+export interface Ring {
+  x: number; y: number; r: number; maxR: number;
+  life: number; maxLife: number; color: string; width: number;
+}
+
+/** v1.4: quality tier, degrades automatically when FPS is low. */
+export type Quality = 'high' | 'medium' | 'low';
+
+interface Star {
+  x: number; y: number; z: number; tw: number; size: number;
+}
+
+const MAX_PARTICLES = 220;
 
 export class Renderer {
   ctx: CanvasRenderingContext2D;
@@ -37,6 +64,7 @@ export class Renderer {
   oy = 0;
   particles: Particle[] = [];
   floats: FloatText[] = [];
+  rings: Ring[] = [];
   time = 0;
   hintCells = new Set<number>();
   hintPulse = 0;
@@ -45,7 +73,20 @@ export class Renderer {
   slide: SlideState | null = null;
   /** beams dim while a line slides (eased in step()) */
   beamFade = 1;
+  /** v1.4: screen shake (magnitude in px, decays) */
+  shake = 0;
+  /** v1.4: full-board win flash */
+  winFlash = 0;
+  /** v1.4: canvas size in CSS px (for starfield) */
+  private vw = 0;
+  private vh = 0;
+  private stars: Star[] = [];
+  private starBiome = '';
   private lumoBlink = 0;
+  /** v1.4: quality tier + rolling FPS average */
+  quality: Quality = 'high';
+  private fpsAvg = 60;
+  private lowFpsStreak = 0;
 
   constructor(private canvas: HTMLCanvasElement) {
     this.ctx = canvas.getContext('2d')!;
@@ -54,6 +95,8 @@ export class Renderer {
   layout(b: Board, dpr: number): void {
     const W = this.canvas.width / dpr;
     const H = this.canvas.height / dpr;
+    this.vw = W;
+    this.vh = H;
     this.cell = Math.floor(Math.min(W / (b.w + 1.2), H / (b.h + 1.6)));
     this.ox = Math.round((W - this.cell * b.w) / 2);
     this.oy = Math.round((H - this.cell * b.h) / 2 + this.cell * 0.18);
@@ -75,6 +118,8 @@ export class Renderer {
     this.lumoBlink += dt;
     if (this.hintPulse > 0) this.hintPulse = Math.max(0, this.hintPulse - dt);
     if (this.solvedFlash > 0) this.solvedFlash = Math.max(0, this.solvedFlash - dt);
+    if (this.winFlash > 0) this.winFlash = Math.max(0, this.winFlash - dt * 1.4);
+    if (this.shake > 0) this.shake = Math.max(0, this.shake - dt * 26);
     // beams dim while sliding (but stay faintly visible), restore after
     const target = this.slide ? 0.45 : 1;
     this.beamFade += (target - this.beamFade) * Math.min(1, dt * 14);
@@ -83,18 +128,42 @@ export class Renderer {
       p.life -= dt;
       p.x += p.vx * dt;
       p.y += p.vy * dt;
-      p.vy += 40 * dt;
-      p.vx *= 0.99;
+      if (!p.floaty) {
+        p.vy += 40 * dt;
+        p.vx *= 0.99;
+      } else {
+        p.vx *= 0.985;
+        p.vy *= 0.985;
+      }
     }
     this.particles = this.particles.filter(p => p.life > 0);
+    for (const r of this.rings) {
+      r.life -= dt;
+      const k = 1 - r.life / r.maxLife;
+      r.r = r.maxR * (1 - Math.pow(1 - k, 2.2));
+    }
+    this.rings = this.rings.filter(r => r.life > 0);
     for (const f of this.floats) {
       f.life -= dt;
       f.y -= 26 * dt;
     }
     this.floats = this.floats.filter(f => f.life > 0);
+    // quality monitor: sustained <45fps degrades, >55fps for long recovers
+    const fps = dt > 0 ? 1 / dt : 60;
+    this.fpsAvg += (fps - this.fpsAvg) * 0.04;
+    if (this.fpsAvg < 45 && dt > 0.001) this.lowFpsStreak += dt; else this.lowFpsStreak = 0;
+    if (this.lowFpsStreak > 2 && this.quality === 'high') { this.quality = 'medium'; this.lowFpsStreak = 0; }
+    else if (this.lowFpsStreak > 2 && this.quality === 'medium') { this.quality = 'low'; this.lowFpsStreak = 0; }
+    else if (this.fpsAvg > 55 && this.quality === 'low') { this.quality = 'medium'; this.lowFpsStreak = 0; }
+    else if (this.fpsAvg > 57 && this.quality === 'medium') {
+      // recovered: climb back up (stars rebuild at the new tier)
+      this.quality = 'high';
+      this.lowFpsStreak = 0;
+    }
   }
 
   burst(cx: number, cy: number, color: string, n = 14, speed = 90): void {
+    n = Math.round(n * (this.quality === 'high' ? 1 : this.quality === 'medium' ? 0.65 : 0.4));
     for (let i = 0; i < n; i++) {
       const a = Math.random() * Math.PI * 2;
       const v = speed * (0.4 + Math.random() * 0.8);
@@ -103,7 +172,39 @@ export class Renderer {
         vx: Math.cos(a) * v, vy: Math.sin(a) * v - 30,
         life: 0.5 + Math.random() * 0.5, maxLife: 1,
         color, size: 2 + Math.random() * 3,
+        star: Math.random() < 0.4, floaty: Math.random() < 0.3,
       });
+    }
+    if (this.particles.length > MAX_PARTICLES) {
+      this.particles.splice(0, this.particles.length - MAX_PARTICLES);
+    }
+  }
+
+  /** v1.4: expanding shockwave ring. */
+  ring(cx: number, cy: number, maxR: number, color: string, width = 3): void {
+    if (this.quality === 'low') return;
+    this.rings.push({ x: cx, y: cy, r: 0, maxR, life: 0.55, maxLife: 0.55, color, width });
+  }
+
+  /** v1.4: celebratory fountain — gem-colored sparks + rings + shake. */
+  celebrate(cx: number, cy: number, colors: string[]): void {
+    for (const col of colors) {
+      this.burst(cx, cy, col, 22, 160);
+    }
+    this.ring(cx, cy, this.cell * 1.6, colors[0] ?? '#fff', 4);
+    this.ring(cx, cy, this.cell * 2.4, '#ffffff', 2);
+    this.shake = Math.max(this.shake, 5);
+  }
+
+  /** v1.4: big win celebration across the board. */
+  winBlast(w: number, h: number, biome: Biome): void {
+    this.winFlash = 1;
+    this.shake = Math.max(this.shake, 9);
+    for (let i = 0; i < 8; i++) {
+      const x = this.ox + (Math.random() * w) * this.cell;
+      const y = this.oy + (Math.random() * h) * this.cell;
+      this.ring(x, y, this.cell * (1.5 + Math.random()), i % 2 ? biome.accent : '#ffe9a8', 3);
+      this.burst(x, y, i % 2 ? biome.accent : '#ffe9a8', 14, 130);
     }
   }
 
@@ -118,9 +219,18 @@ export class Renderer {
     const dpr = window.devicePixelRatio || 1;
     const W = this.canvas.width / dpr;
     const H = this.canvas.height / dpr;
+    if (W !== this.vw || H !== this.vh) { this.vw = W; this.vh = H; this.stars = []; }
+
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, W, H);
 
+    // screen shake — decaying random offset applied to everything below
+    const sh = this.shake;
+    if (sh > 0.1) {
+      ctx.translate((Math.random() - 0.5) * sh, (Math.random() - 0.5) * sh);
+    }
+
+    this.drawBackdrop(b, biome);
     this.drawBoardBase(b, biome);
 
     // beams under devices, dimmed (not hidden) while sliding
@@ -177,7 +287,65 @@ export class Renderer {
       }
     }
 
+    this.drawRings();
     this.drawParticles();
+
+    // full-board win flash overlay
+    if (this.winFlash > 0.01) {
+      ctx.globalAlpha = 0.32 * this.winFlash;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(-20, -20, W + 40, H + 40);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  /* -------------------------------------------------------------- */
+  /* backdrop: biome-tinted starfield + soft nebula                 */
+
+  private ensureStars(biome: Biome): void {
+    const key = biome.key + '@' + Math.round(this.vw) + 'x' + Math.round(this.vh) + '@' + this.quality;
+    if (this.starBiome === key) return;
+    this.starBiome = key;
+    const count = this.quality === 'high' ? 90 : this.quality === 'medium' ? 55 : 26;
+    this.stars = [];
+    for (let i = 0; i < count; i++) {
+      this.stars.push({
+        x: Math.random() * this.vw,
+        y: Math.random() * this.vh,
+        z: 0.3 + Math.random() * 0.7,           // parallax depth
+        tw: Math.random() * Math.PI * 2,        // twinkle phase
+        size: 0.6 + Math.random() * 1.4,
+      });
+    }
+  }
+
+  private drawBackdrop(b: Board, biome: Biome): void {
+    const { ctx } = this;
+    this.ensureStars(biome);
+
+    // soft radial glow behind the board, biome-tinted
+    const cx = this.ox + (b.w * this.cell) / 2;
+    const cy = this.oy + (b.h * this.cell) / 2;
+    const R = Math.max(this.vw, this.vh) * 0.75;
+    const g = ctx.createRadialGradient(cx, cy, this.cell, cx, cy, R);
+    g.addColorStop(0, hexA(biome.accent, 0.10));
+    g.addColorStop(0.5, hexA(biome.accent, 0.035));
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, this.vw, this.vh);
+
+    // parallax stars — slow drift + twinkle
+    const drift = this.time * 4;
+    for (const s of this.stars) {
+      const y = (s.y + drift * s.z) % (this.vh + 20) - 10;
+      const tw = 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(this.time * (0.8 + s.z) + s.tw));
+      ctx.globalAlpha = tw * 0.5 * s.z;
+      ctx.fillStyle = '#dfe8ff';
+      ctx.beginPath();
+      ctx.arc(s.x, y, s.size * s.z, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
   }
 
   /** Clip to the board plate so sliding cells never leak outside it. */
@@ -197,26 +365,40 @@ export class Renderer {
 
   private drawBoardBase(b: Board, biome: Biome): void {
     const { ctx } = this;
-    // soft vignette board plate
+    const s = this.cell;
+
+    // deep plate with biome tint + layered glow
     ctx.save();
     ctx.shadowColor = 'rgba(0,0,0,0.5)';
     ctx.shadowBlur = 24;
-    ctx.fillStyle = 'rgba(10,14,26,0.55)';
-    roundRect(ctx, this.ox - 8, this.oy - 8, b.w * this.cell + 16, b.h * this.cell + 16, 14);
+    const plate = ctx.createLinearGradient(0, this.oy - 8, 0, this.oy + b.h * s + 8);
+    plate.addColorStop(0, hexA(biome.accent, 0.06));
+    plate.addColorStop(0.5, 'rgba(10,14,26,0.62)');
+    plate.addColorStop(1, 'rgba(8,11,20,0.72)');
+    ctx.fillStyle = plate;
+    roundRect(ctx, this.ox - 8, this.oy - 8, b.w * s + 16, b.h * s + 16, 14);
     ctx.fill();
     ctx.restore();
 
-    // checker cells
+    // hairline frame with accent
+    ctx.strokeStyle = hexA(biome.accent, 0.22);
+    ctx.lineWidth = 1.2;
+    roundRect(ctx, this.ox - 8, this.oy - 8, b.w * s + 16, b.h * s + 16, 14);
+    ctx.stroke();
+
+    // checker cells — subtle luminous grid
     for (let y = 0; y < b.h; y++) {
       for (let x = 0; x < b.w; x++) {
         const even = (x + y) % 2 === 0;
         ctx.fillStyle = even ? 'rgba(255,255,255,0.045)' : 'rgba(255,255,255,0.02)';
-        roundRect(ctx, this.ox + x * this.cell + 1.5, this.oy + y * this.cell + 1.5, this.cell - 3, this.cell - 3, 8);
+        roundRect(ctx, this.ox + x * s + 1.5, this.oy + y * s + 1.5, s - 3, s - 3, 8);
         ctx.fill();
       }
     }
-    void biome;
   }
+
+  /* -------------------------------------------------------------- */
+  /* beams: three-pass glow with flowing energy                     */
 
   private drawBeams(sim: SimResult): void {
     const { ctx } = this;
@@ -227,37 +409,85 @@ export class Renderer {
 
     const px = (v: number): number => this.ox + v * this.cell;
     const py = (v: number): number => this.oy + v * this.cell;
+    const flow = (this.time * 0.9) % 1;
+
     for (const sp of sim.spans) {
       const color = COLOR_HEX[sp.c] ?? '#fff';
       const x1 = px(sp.x1);
       const y1 = py(sp.y1);
       const x2 = px(sp.x2);
       const y2 = py(sp.y2);
-      // glow pass
-      ctx.globalAlpha = 0.25;
+
+      // pass 1: wide bloom
+      ctx.globalAlpha = 0.22 * this.beamFade;
       ctx.strokeStyle = color;
-      ctx.lineWidth = Math.max(6, this.cell * 0.16);
+      ctx.lineWidth = Math.max(8, this.cell * 0.22);
       ctx.beginPath();
       ctx.moveTo(x1, y1);
       ctx.lineTo(x2, y2);
       ctx.stroke();
-      // core pass
-      ctx.globalAlpha = 0.95;
-      ctx.lineWidth = Math.max(2, this.cell * 0.055);
-      ctx.strokeStyle = mixHex(color, '#ffffff', 0.55);
+
+      // pass 2: color body
+      ctx.globalAlpha = 0.85 * this.beamFade;
+      ctx.lineWidth = Math.max(3, this.cell * 0.085);
+      ctx.strokeStyle = color;
       ctx.beginPath();
       ctx.moveTo(x1, y1);
       ctx.lineTo(x2, y2);
       ctx.stroke();
+
+      // pass 3: white-hot core
+      ctx.globalAlpha = 0.95 * this.beamFade;
+      ctx.lineWidth = Math.max(1.5, this.cell * 0.035);
+      ctx.strokeStyle = mixHex(color, '#ffffff', 0.7);
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+
+      // flowing energy dashes toward the far end
+      if (this.quality !== 'low') {
+        const len = Math.hypot(x2 - x1, y2 - y1);
+        const n = Math.max(1, Math.floor(len / (this.cell * 0.9)));
+        ctx.save();
+        ctx.globalAlpha = 0.55 * this.beamFade;
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = Math.max(1.2, this.cell * 0.03);
+        for (let i = 0; i < n; i++) {
+          const t0 = ((i + flow) / n) % 1;
+          const t1 = Math.min(1, t0 + 0.5 / n);
+          ctx.beginPath();
+          ctx.moveTo(x1 + (x2 - x1) * t0, y1 + (y2 - y1) * t0);
+          ctx.lineTo(x1 + (x2 - x1) * t1, y1 + (y2 - y1) * t1);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+    }
+
+    // endpoint star glints (source emitters + sink entries)
+    if (this.quality === 'high') {
+      for (const sp of sim.spans) {
+        const color = COLOR_HEX[sp.c] ?? '#fff';
+        const gx = px(sp.x2);
+        const gy = py(sp.y2);
+        const pulse = 0.6 + 0.4 * Math.sin(this.time * 6 + sp.x2 + sp.y2);
+        ctx.globalAlpha = 0.5 * this.beamFade * pulse;
+        ctx.fillStyle = '#ffffff';
+        star4(ctx, gx, gy, this.cell * 0.11);
+      }
     }
     ctx.restore();
-    // traveling sparkles
-    if (sim.segs.length > 0 && Math.random() < 0.3) {
+
+    // ambient sparkle dust along random segments
+    const dust = this.quality === 'high' ? 0.3 : this.quality === 'medium' ? 0.15 : 0;
+    if (sim.segs.length > 0 && Math.random() < dust) {
       const s = sim.segs[Math.floor(Math.random() * sim.segs.length)];
       const { cx, cy } = this.cellCenter(s.x, s.y);
       this.particles.push({
-        x: cx, y: cy, vx: 0, vy: 0, life: 0.5, maxLife: 0.5,
-        color: COLOR_HEX[s.c] ?? '#fff', size: 1.6,
+        x: cx, y: cy, vx: (Math.random() - 0.5) * 12, vy: -6 - Math.random() * 10,
+        life: 0.6, maxLife: 0.6,
+        color: COLOR_HEX[s.c] ?? '#fff', size: 1.6, star: true, floaty: true,
       });
     }
   }
@@ -284,25 +514,48 @@ export class Renderer {
       }
 
       case 'block': {
-        ctx.fillStyle = 'rgba(30,36,52,0.9)';
+        // beveled stone
+        const g = ctx.createLinearGradient(cx - s * 0.38, cy - s * 0.38, cx + s * 0.38, cy + s * 0.38);
+        g.addColorStop(0, 'rgba(44,52,74,0.95)');
+        g.addColorStop(1, 'rgba(26,31,46,0.95)');
+        ctx.fillStyle = g;
         roundRect(ctx, cx - s * 0.38, cy - s * 0.38, s * 0.76, s * 0.76, 7);
         ctx.fill();
-        ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+        ctx.strokeStyle = 'rgba(255,255,255,0.14)';
         ctx.lineWidth = 1.5;
+        ctx.stroke();
+        // top light edge
+        ctx.strokeStyle = 'rgba(255,255,255,0.10)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(cx - s * 0.26, cy - s * 0.30);
+        ctx.lineTo(cx + s * 0.26, cy - s * 0.30);
         ctx.stroke();
         break;
       }
 
       case 'mirror': {
-        const col = lit ? '#ffffff' : '#9fb4d8';
         ctx.save();
         ctx.translate(cx, cy);
         ctx.rotate(c.dir === 0 ? -Math.PI / 4 : Math.PI / 4);
-        ctx.fillStyle = lit ? 'rgba(255,255,255,0.95)' : 'rgba(159,180,216,0.8)';
+        // metallic base
+        ctx.fillStyle = 'rgba(70,84,116,0.9)';
+        roundRect(ctx, -s * 0.32, -s * 0.075, s * 0.64, s * 0.15, 4);
+        ctx.fill();
+        // reflective face
+        const g = ctx.createLinearGradient(-s * 0.30, 0, s * 0.30, 0);
         if (lit) {
+          g.addColorStop(0, '#ffffff');
+          g.addColorStop(0.5, '#ffffff');
+          g.addColorStop(1, '#dfe9ff');
           ctx.shadowColor = '#fff';
-          ctx.shadowBlur = 12;
+          ctx.shadowBlur = 14;
+        } else {
+          g.addColorStop(0, '#c7d6f2');
+          g.addColorStop(0.5, '#8fa3c8');
+          g.addColorStop(1, '#c7d6f2');
         }
+        ctx.fillStyle = g;
         roundRect(ctx, -s * 0.30, -s * 0.055, s * 0.60, s * 0.11, 3);
         ctx.fill();
         ctx.restore();
@@ -313,8 +566,17 @@ export class Renderer {
         ctx.save();
         ctx.translate(cx, cy);
         ctx.rotate(c.dir === 0 ? -Math.PI / 4 : Math.PI / 4);
-        ctx.fillStyle = lit ? 'rgba(190,240,255,0.95)' : 'rgba(120,170,200,0.75)';
-        if (lit) { ctx.shadowColor = '#bfefff'; ctx.shadowBlur = 12; }
+        const g = ctx.createLinearGradient(-s * 0.30, 0, s * 0.30, 0);
+        if (lit) {
+          g.addColorStop(0, '#ffffff');
+          g.addColorStop(1, '#bfefff');
+          ctx.shadowColor = '#bfefff';
+          ctx.shadowBlur = 14;
+        } else {
+          g.addColorStop(0, '#a8d4ea');
+          g.addColorStop(1, '#6f9cc0');
+        }
+        ctx.fillStyle = g;
         roundRect(ctx, -s * 0.30, -s * 0.05, s * 0.60, s * 0.10, 3);
         ctx.fill();
         // dashed center line = half-silvered
@@ -334,18 +596,32 @@ export class Renderer {
         const col = COLOR_HEX[c.color] ?? '#fff';
         ctx.globalAlpha = lit ? 0.95 : 0.55;
         ctx.fillStyle = col;
-        if (lit) { ctx.shadowColor = col; ctx.shadowBlur = 14; }
+        if (lit) { ctx.shadowColor = col; ctx.shadowBlur = 16; }
         roundRect(ctx, cx - s * 0.30, cy - s * 0.30, s * 0.60, s * 0.60, 6);
         ctx.fill();
         ctx.shadowBlur = 0;
-        // glass shine
-        ctx.globalAlpha = 0.25;
+        // frame
+        ctx.globalAlpha = 1;
+        ctx.strokeStyle = hexA(col, lit ? 0.95 : 0.6);
+        ctx.lineWidth = 1.6;
+        roundRect(ctx, cx - s * 0.30, cy - s * 0.30, s * 0.60, s * 0.60, 6);
+        ctx.stroke();
+        // double glass shine
+        ctx.globalAlpha = 0.28;
         ctx.fillStyle = '#fff';
         ctx.beginPath();
         ctx.moveTo(cx - s * 0.2, cy - s * 0.02);
         ctx.lineTo(cx - s * 0.02, cy - s * 0.2);
         ctx.lineTo(cx + s * 0.06, cy - s * 0.2);
         ctx.lineTo(cx - s * 0.12, cy + s * 0.02);
+        ctx.closePath();
+        ctx.fill();
+        ctx.globalAlpha = 0.14;
+        ctx.beginPath();
+        ctx.moveTo(cx + s * 0.08, cy + s * 0.1);
+        ctx.lineTo(cx + s * 0.16, cy + s * 0.02);
+        ctx.lineTo(cx + s * 0.2, cy + s * 0.06);
+        ctx.lineTo(cx + s * 0.12, cy + s * 0.14);
         ctx.closePath();
         ctx.fill();
         ctx.globalAlpha = 1;
@@ -361,7 +637,7 @@ export class Renderer {
         g.addColorStop(0.5, 'rgba(140,240,200,0.85)');
         g.addColorStop(1, 'rgba(120,160,255,0.85)');
         ctx.fillStyle = lit ? '#eafffa' : g;
-        if (lit) { ctx.shadowColor = '#d0fff0'; ctx.shadowBlur = 16; }
+        if (lit) { ctx.shadowColor = '#d0fff0'; ctx.shadowBlur = 18; }
         roundRect(ctx, -s * 0.26, -s * 0.26, s * 0.52, s * 0.52, 5);
         ctx.fill();
         ctx.restore();
@@ -374,8 +650,17 @@ export class Renderer {
         ctx.save();
         ctx.translate(cx, cy);
         ctx.rotate(Math.PI / 4);
-        ctx.fillStyle = got ? col : 'rgba(143,163,200,0.7)';
-        if (got) { ctx.shadowColor = col; ctx.shadowBlur = 14; }
+        const g = ctx.createLinearGradient(-s * 0.26, -s * 0.26, s * 0.26, s * 0.26);
+        if (got) {
+          g.addColorStop(0, mixHex(col, '#ffffff', 0.3));
+          g.addColorStop(1, col);
+          ctx.shadowColor = col;
+          ctx.shadowBlur = 16;
+        } else {
+          g.addColorStop(0, 'rgba(120,138,172,0.85)');
+          g.addColorStop(1, 'rgba(90,104,134,0.85)');
+        }
+        ctx.fillStyle = g;
         roundRect(ctx, -s * 0.26, -s * 0.26, s * 0.52, s * 0.52, 5);
         ctx.fill();
         ctx.restore();
@@ -390,10 +675,27 @@ export class Renderer {
         const exact = got === want;
         const colW = COLOR_HEX[want] ?? '#fff';
         const colG = COLOR_HEX[got] ?? '#333';
-        const pulse = exact ? 1 + 0.05 * Math.sin(this.time * 5) : 1;
+        const pulse = exact ? 1 + 0.06 * Math.sin(this.time * 5 + idx) : 1;
         ctx.save();
         ctx.translate(cx, cy);
         ctx.scale(pulse, pulse);
+
+        // solved: light pillar beaming upward + halo
+        if (exact && this.quality !== 'low') {
+          const pg = ctx.createLinearGradient(0, -s * 1.15, 0, -s * 0.1);
+          pg.addColorStop(0, hexA(colW, 0));
+          pg.addColorStop(0.55, hexA(colW, 0.16));
+          pg.addColorStop(1, hexA(colW, 0.34));
+          ctx.fillStyle = pg;
+          ctx.beginPath();
+          ctx.moveTo(-s * 0.13, -s * 0.1);
+          ctx.lineTo(s * 0.13, -s * 0.1);
+          ctx.lineTo(s * 0.05, -s * 1.15);
+          ctx.lineTo(-s * 0.05, -s * 1.15);
+          ctx.closePath();
+          ctx.fill();
+        }
+
         // crystal silhouette (hexagon)
         ctx.beginPath();
         for (let k = 0; k < 6; k++) {
@@ -406,8 +708,11 @@ export class Renderer {
         ctx.closePath();
         if (exact) {
           ctx.shadowColor = colW;
-          ctx.shadowBlur = 18;
-          ctx.fillStyle = colW;
+          ctx.shadowBlur = 22;
+          const gg = ctx.createLinearGradient(cx - s * 0.2, cy - s * 0.3, cx + s * 0.2, cy + s * 0.3);
+          gg.addColorStop(0, mixHex(colW, '#ffffff', 0.45));
+          gg.addColorStop(1, colW);
+          ctx.fillStyle = gg;
         } else if (got !== 0) {
           ctx.fillStyle = colG;
           ctx.shadowColor = colG;
@@ -419,6 +724,7 @@ export class Renderer {
         ctx.strokeStyle = exact ? '#ffffff' : hexA(colW, 0.7);
         ctx.lineWidth = 2;
         ctx.stroke();
+
         // wrong-color warning ring: lit but not the exact hue
         if (!exact && got !== 0) {
           const wob = 0.5 + 0.5 * Math.sin(this.time * 7);
@@ -430,7 +736,8 @@ export class Renderer {
           ctx.stroke();
           ctx.setLineDash([]);
         }
-        // inner facet
+
+        // faceted core: triangle + specular glints
         ctx.beginPath();
         for (let k = 0; k < 3; k++) {
           const a = (Math.PI * 2 / 3) * k - Math.PI / 6;
@@ -440,8 +747,26 @@ export class Renderer {
           else ctx.lineTo(px, py);
         }
         ctx.closePath();
-        ctx.fillStyle = exact ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.12)';
+        ctx.fillStyle = exact ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.12)';
         ctx.fill();
+        // edge facets (thin highlight lines from center to corners)
+        if (exact) {
+          ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+          ctx.lineWidth = 1;
+          for (let k = 0; k < 6; k++) {
+            const a = (Math.PI / 3) * k - Math.PI / 6;
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(Math.cos(a) * s * 0.33, Math.sin(a) * s * 0.33);
+            ctx.stroke();
+          }
+          // twinkle glint
+          const tw = 0.5 + 0.5 * Math.sin(this.time * 3 + idx * 2.1);
+          if (tw > 0.7 && this.quality === 'high') {
+            ctx.fillStyle = 'rgba(255,255,255,0.9)';
+            star4(ctx, -s * 0.14, -s * 0.15, s * 0.07 * (tw - 0.5) * 2);
+          }
+        }
         ctx.restore();
         break;
       }
@@ -450,19 +775,27 @@ export class Renderer {
         const col = COLOR_HEX[c.color] ?? '#fff';
         ctx.save();
         ctx.translate(cx, cy);
-        // housing
-        ctx.fillStyle = 'rgba(24,30,48,0.95)';
+        // housing with gradient
+        const hg = ctx.createLinearGradient(-s * 0.34, -s * 0.34, s * 0.34, s * 0.34);
+        hg.addColorStop(0, 'rgba(34,42,66,0.98)');
+        hg.addColorStop(1, 'rgba(18,23,40,0.98)');
+        ctx.fillStyle = hg;
         roundRect(ctx, -s * 0.34, -s * 0.34, s * 0.68, s * 0.68, 9);
         ctx.fill();
         ctx.strokeStyle = hexA(col, 0.9);
         ctx.lineWidth = 2;
         ctx.stroke();
-        // glowing core
+        // glowing core with inner gradient
+        const cr = s * 0.15 * (1 + 0.08 * Math.sin(this.time * 4 + idx));
+        const cg = ctx.createRadialGradient(0, 0, 0, 0, 0, cr * 2.2);
+        cg.addColorStop(0, '#ffffff');
+        cg.addColorStop(0.4, col);
+        cg.addColorStop(1, hexA(col, 0));
         ctx.shadowColor = col;
-        ctx.shadowBlur = 14;
-        ctx.fillStyle = col;
+        ctx.shadowBlur = 16;
+        ctx.fillStyle = cg;
         ctx.beginPath();
-        ctx.arc(0, 0, s * 0.15 * (1 + 0.08 * Math.sin(this.time * 4 + idx)), 0, Math.PI * 2);
+        ctx.arc(0, 0, cr * 2.2, 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
         // direction tick
@@ -474,14 +807,36 @@ export class Renderer {
     ctx.restore();
   }
 
+  private drawRings(): void {
+    const { ctx } = this;
+    for (const r of this.rings) {
+      const k = r.life / r.maxLife;
+      ctx.globalAlpha = k * 0.8;
+      ctx.strokeStyle = r.color;
+      ctx.lineWidth = r.width * k + 0.5;
+      ctx.beginPath();
+      ctx.arc(r.x, r.y, r.r, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
+
   private drawParticles(): void {
     const { ctx } = this;
     for (const p of this.particles) {
       ctx.globalAlpha = Math.max(0, p.life / p.maxLife);
-      ctx.fillStyle = p.color;
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-      ctx.fill();
+      if (p.star) {
+        ctx.fillStyle = p.color;
+        ctx.shadowColor = p.color;
+        ctx.shadowBlur = 4;
+        star4(ctx, p.x, p.y, p.size * 1.7);
+        ctx.shadowBlur = 0;
+      } else {
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
     ctx.globalAlpha = 1;
     for (const f of this.floats) {
@@ -505,16 +860,17 @@ export class Renderer {
     ctx.save();
     ctx.translate(x, y + bob);
     ctx.scale(scale, scale);
-    // aura
-    const g = ctx.createRadialGradient(0, 0, 2, 0, 0, 26);
+    // aura — breathing glow
+    const auraR = 26 + Math.sin(t * 1.6) * 2;
+    const g = ctx.createRadialGradient(0, 0, 2, 0, 0, auraR);
     g.addColorStop(0, 'rgba(255,244,200,0.9)');
     g.addColorStop(0.5, 'rgba(255,220,130,0.25)');
     g.addColorStop(1, 'rgba(255,220,130,0)');
     ctx.fillStyle = g;
     ctx.beginPath();
-    ctx.arc(0, 0, 26, 0, Math.PI * 2);
+    ctx.arc(0, 0, auraR, 0, Math.PI * 2);
     ctx.fill();
-    // body — teardrop
+    // body — teardrop with vertical sheen
     ctx.beginPath();
     ctx.moveTo(0, -13);
     ctx.quadraticCurveTo(10, -2, 8, 7);
@@ -522,7 +878,11 @@ export class Renderer {
     ctx.quadraticCurveTo(-5, 13, -8, 7);
     ctx.quadraticCurveTo(-10, -2, 0, -13);
     ctx.closePath();
-    ctx.fillStyle = '#fff3c4';
+    const bodyG = ctx.createLinearGradient(-8, -13, 8, 13);
+    bodyG.addColorStop(0, '#fffbdf');
+    bodyG.addColorStop(0.5, '#fff3c4');
+    bodyG.addColorStop(1, '#ffe9a0');
+    ctx.fillStyle = bodyG;
     ctx.shadowColor = 'rgba(255,230,140,0.9)';
     ctx.shadowBlur = 16;
     ctx.fill();
@@ -535,6 +895,14 @@ export class Renderer {
     ctx.ellipse(-3.4, eyeY, 1.5, 2.6 * blink, 0, 0, Math.PI * 2);
     ctx.ellipse(3.4, eyeY, 1.5, 2.6 * blink, 0, 0, Math.PI * 2);
     ctx.fill();
+    // eye glints
+    if (blink === 1) {
+      ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      ctx.beginPath();
+      ctx.arc(-3.0, eyeY - 0.9, 0.5, 0, Math.PI * 2);
+      ctx.arc(3.8, eyeY - 0.9, 0.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
     // mouth
     ctx.strokeStyle = '#2a2440';
     ctx.lineWidth = 1.2;
@@ -547,13 +915,20 @@ export class Renderer {
       ctx.arc(0, 2.5, 2.4, 0.2 * Math.PI, 0.8 * Math.PI);
     }
     ctx.stroke();
-    // spark
+    // orbiting sparks
     if (happy === 'cheer') {
       const a = t * 5;
       for (let k = 0; k < 3; k++) {
         const ang = a + (k * Math.PI * 2) / 3;
         ctx.fillStyle = 'rgba(255,235,150,0.9)';
         star4(ctx, Math.cos(ang) * 20, Math.sin(ang) * 14 - 4, 2.6);
+      }
+    } else {
+      // idle: occasional single twinkle
+      const tw = Math.sin(t * 1.2);
+      if (tw > 0.85) {
+        ctx.fillStyle = 'rgba(255,235,150,0.75)';
+        star4(ctx, 12 * Math.sign(Math.sin(t * 0.7)), -14, 2.2);
       }
     }
     ctx.restore();

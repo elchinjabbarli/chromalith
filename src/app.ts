@@ -98,7 +98,13 @@ function renderMainMenu(): void {
   $('mm-level-badge').textContent = `${t('level')} ${unlocked} / ${TOTAL_LEVELS}`;
   $('mm-biome-name').textContent = t(cur.nameKey as never);
   $('mm-progress-label').textContent = `${unlocked} / ${TOTAL_LEVELS}`;
-  $('mm-gems').textContent = String(save.gems);
+  const mmG = $('mm-gems');
+  if (mmG.textContent !== String(save.gems)) {
+    mmG.textContent = String(save.gems);
+    mmG.classList.remove('pulse');
+    void mmG.offsetWidth;
+    mmG.classList.add('pulse');
+  }
   $('mm-version').textContent = `v${VERSION}`;
 }
 
@@ -146,6 +152,7 @@ function startLevel(n: number): void {
   bg.style.setProperty('--bg3', biome.bg[2]);
   bg.style.setProperty('--accent', biome.accent);
   syncSkyGradient();
+  platform.vibrate(12);
   // hud
   $('hud-level').textContent = `${t('level')} ${n}`;
   $('hud-par').textContent = `${t('par')} ${p.par}`;
@@ -173,7 +180,13 @@ function updateHud(ok: number, total: number): void {
 }
 
 function updateHudGems(): void {
-  $('hud-gems').textContent = String(save.gems);
+  const el = $('hud-gems');
+  if (el.textContent !== String(save.gems)) {
+    el.textContent = String(save.gems);
+    el.classList.remove('pulse');
+    void el.offsetWidth; // restart animation
+    el.classList.add('pulse');
+  }
 }
 
 /* ------------------------------------------------------------------ */

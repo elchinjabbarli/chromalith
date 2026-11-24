@@ -1,6 +1,6 @@
 {
   "name": "chromalith",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "private": true,
   "description": "Chromalith — a light-weaving puzzle. Slide rows and columns to route colored beams through mirrors, prisms and mixers. 1000 procedurally generated levels.",
   "scripts": {

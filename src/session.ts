@@ -108,7 +108,9 @@ export class Session {
     this.refreshSolvedSet();
     if (after.ok === after.total && after.total > 0) {
       this.won = true;
-      setTimeout(() => this.events.onWin(this.moves, this.par), 450);
+      // v1.4: board-wide celebration the moment the last crystal lights
+      this.renderer.winBlast(this.board.w, this.board.h, this.biome);
+      setTimeout(() => this.events.onWin(this.moves, this.par), 650);
     }
     return true;
   }
@@ -121,7 +123,9 @@ export class Session {
       const y = Math.floor(i / this.board.w);
       const { cx, cy } = r.cellCenter(x, y);
       const c = this.board.cells[i];
-      r.burst(cx, cy, cellGlowColor(c.color), 16, 110);
+      // v1.4: ring + burst + sparkle dust per solved crystal
+      r.burst(cx, cy, cellGlowColor(c.color), 20, 130);
+      r.ring(cx, cy, this.board ? r.cell * 1.5 : 60, cellGlowColor(c.color), 3);
     }
     sfx.litOk(newly.length);
   }

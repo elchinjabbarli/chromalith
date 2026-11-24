@@ -117,7 +117,11 @@ body {
   flex-direction: column;
   z-index: 1;
 }
-.screen.active { display: flex; animation: fadein 0.28s ease; }
+.screen.active { display: flex; animation: screenIn 0.32s cubic-bezier(0.2, 0.9, 0.3, 1); }
+@keyframes screenIn {
+  from { opacity: 0; transform: translateY(10px) scale(0.99); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
 
 @keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
 
@@ -157,7 +161,17 @@ body {
   justify-content: center;
   box-shadow: 0 10px 26px rgba(2, 4, 12, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.07);
 }
-.btn:active { transform: scale(0.96); filter: brightness(1.15); }
+.btn:active { transform: scale(0.96); filter: brightness(1.18); }
+.btn { position: relative; overflow: hidden; }
+.btn.primary::after, .btn.gold::after {
+  content: '';
+  position: absolute; inset: 0;
+  background: linear-gradient(105deg, transparent 30%, rgba(255,255,255,0.22) 48%, transparent 62%);
+  transform: translateX(-120%);
+  pointer-events: none;
+}
+.btn.primary:active::after, .btn.gold:active::after { animation: sheen 0.6s ease; }
+@keyframes sheen { to { transform: translateX(120%); } }
 .btn .i { width: 20px; height: 20px; flex: 0 0 auto; }
 .btn.primary {
   background:
@@ -338,7 +352,15 @@ body {
 .hud-line2 { color: var(--text-dim); font-size: 0.8rem; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .hud-sep { margin: 0 6px; opacity: 0.4; }
 
-.hud-gems {
+.gem-pulse, .hud-gems.pulse, .mm-gems-wrap.pulse {
+  animation: gemPulse 0.5s cubic-bezier(0.2, 2.2, 0.4, 1);
+}
+@keyframes gemPulse {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.28); filter: brightness(1.35); }
+  100% { transform: scale(1); }
+}
+.hud-gems { display: inline-flex; align-items: center;
   display: flex; align-items: center; gap: 6px;
   background: var(--panel);
   border: 1px solid var(--panel-border);
@@ -427,9 +449,9 @@ body {
     transparent 90deg, var(--c-gold) 98deg, transparent 106deg,
     transparent 180deg, var(--c-teal) 188deg, transparent 196deg,
     transparent 270deg, var(--c-violet) 278deg, transparent 286deg);
-  opacity: 0.07;
+  opacity: 0.10;
   border-radius: 50%;
-  animation: rayspin 14s linear infinite;
+  animation: rayspin 9s linear infinite;
   pointer-events: none;
   filter: blur(1px);
 }
@@ -445,6 +467,11 @@ body {
   transition: fill 0.2s, filter 0.2s;
 }
 .star.lit path { fill: var(--gold); stroke: #fff3c4; filter: drop-shadow(0 0 14px rgba(255, 210, 63, 0.75)); }
+.star.lit { animation: starGlow 2.2s ease-in-out infinite; }
+@keyframes starGlow {
+  0%, 100% { filter: drop-shadow(0 0 8px rgba(255, 210, 63, 0.45)); }
+  50% { filter: drop-shadow(0 0 20px rgba(255, 210, 63, 0.95)); }
+}
 .star.pop { animation: starpop 0.5s cubic-bezier(0.2, 2.2, 0.4, 1); }
 @keyframes starpop { 0% { transform: scale(0.2) rotate(-30deg); } 100% { transform: scale(1) rotate(0); } }
 
@@ -455,6 +482,8 @@ body {
   display: flex; align-items: center; gap: 7px;
 }
 #win-x2 { padding: 10px 16px; font-size: 0.85rem; white-space: nowrap; }
+#hud-gems, #mm-gems { display: inline-block; }
+#hud-gems.pulse, #mm-gems.pulse { animation: gemPulse 0.5s cubic-bezier(0.2, 2.2, 0.4, 1); }
 .win-row { margin-top: 4px; }
 .win-row { display: flex; gap: 12px; width: 100%; }
 .win-row .btn { flex: 1; }
