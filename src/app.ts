@@ -6,8 +6,6 @@ import { Board, makeCell } from './core/grid';
 import { simulate, sinkStats } from './core/sim';
 import { BIOMES, biomeFor, TOTAL_LEVELS } from './core/difficulty';
 import { Renderer } from './render/renderer';
-import { drawWinFx } from './render/fx';
-import { drawMenuLogo } from './render/logo';
 import { Session, Shift } from './session';
 import { loadSave, persistSave, SaveState, todayKey } from './systems/save';
 import { setLang, getLang, t, Lang } from './systems/i18n';
@@ -95,17 +93,37 @@ function showScreen(id: string): void {
 
 function renderMainMenu(): void {
   const unlocked = save.level;
-  const nextBiome = BIOMES.find(b => b.range[0] > unlocked);
   const cur = biomeFor(unlocked);
-  $('mm-title').textContent = t('title');
-  $('mm-tagline').textContent = t('tagline');
   $('mm-play-label').textContent = unlocked > 1 ? t('continue') : t('play');
   $('mm-level-badge').textContent = `${t('level')} ${unlocked} / ${TOTAL_LEVELS}`;
-  $('mm-biome').textContent = t(cur.nameKey as never);
+  $('mm-biome-name').textContent = t(cur.nameKey as never);
+  $('mm-progress-label').textContent = `${unlocked} / ${TOTAL_LEVELS}`;
   $('mm-gems').textContent = String(save.gems);
   $('mm-version').textContent = `v${VERSION}`;
-  $('mm-badge-1000').textContent = t('levelPackBadge');
-  void nextBiome;
+}
+
+/** Keep the SVG stage sky gradient in sync with the current biome vars. */
+function syncSkyGradient(): void {
+  const svgNS = 'http://www.w3.org/2000/svg';
+  let def = document.getElementById('sky-grad-def') as SVGLinearGradientElement | null;
+  if (!def) {
+    // inject once: a linearGradient whose stops read the CSS vars
+    def = document.createElementNS(svgNS, 'linearGradient') as SVGLinearGradientElement;
+    def.id = 'sky-grad-def';
+    def.setAttribute('x1', '0'); def.setAttribute('y1', '0');
+    def.setAttribute('x2', '0'); def.setAttribute('y2', '1');
+    const s1 = document.createElementNS(svgNS, 'stop');
+    s1.setAttribute('offset', '0%'); s1.setAttribute('stop-color', 'var(--bg3)');
+    const s2 = document.createElementNS(svgNS, 'stop');
+    s2.setAttribute('offset', '45%'); s2.setAttribute('stop-color', 'var(--bg2)');
+    const s3 = document.createElementNS(svgNS, 'stop');
+    s3.setAttribute('offset', '100%'); s3.setAttribute('stop-color', 'var(--bg1)');
+    def.append(s1, s2, s3);
+    document.querySelector('.stage-sky defs')?.appendChild(def);
+  }
+  // nudge the base rect to re-resolve var() stops (Safari quirk)
+  const rect = document.querySelector('.stage-sky rect');
+  if (rect) rect.setAttribute('fill', 'url(#sky-grad-def)');
 }
 
 function startLevel(n: number): void {
@@ -127,6 +145,7 @@ function startLevel(n: number): void {
   bg.style.setProperty('--bg2', biome.bg[1]);
   bg.style.setProperty('--bg3', biome.bg[2]);
   bg.style.setProperty('--accent', biome.accent);
+  syncSkyGradient();
   // hud
   $('hud-level').textContent = `${t('level')} ${n}`;
   $('hud-par').textContent = `${t('par')} ${p.par}`;
@@ -191,8 +210,7 @@ async function onLevelWon(n: number, moves: number, par: number): Promise<void> 
     el.classList.toggle('lit', i <= stars);
     el.classList.remove('pop');
   }
-  $('win-gems').textContent = t('gemsEarned', { n: gained });
-  drawWinFx($('win-canvas') as HTMLCanvasElement);
+  $('win-gems').textContent = '◆ ' + t('gemsEarned', { n: gained });
   const x2 = $('win-x2');
   x2.classList.remove('hidden');
   const nextBtn = $('win-next');
@@ -386,7 +404,7 @@ function renderMap(): void {
     div.innerHTML = `
       <div class="map-biome-name">${locked ? '???' : t(b.nameKey as never)}</div>
       <div class="map-biome-range">${b.range[0]}–${b.range[1]}</div>
-      <div class="map-biome-stars">★ ${stars.earned}/${stars.max}</div>
+      <div class="map-biome-stars"><svg viewBox="0 0 24 24"><path d="M12 1.8 l3.1 6.9 7.1.8 -5.3 5 1.4 7.1 L12 17.9 5.7 21.6 7.1 14.5 1.8 9.5 8.9 8.7 Z"/></svg> ${stars.earned}/${stars.max}</div>
       <div class="map-biome-bar"><i style="width:${Math.round(100 * stars.earned / Math.max(1, stars.max))}%"></i></div>
     `;
     if (!locked) {
@@ -719,7 +737,7 @@ async function boot(): Promise<void> {
 
   retranslateStatics();
   renderMainMenu();
-  drawMenuLogo($('mm-logo') as HTMLCanvasElement);
+  syncSkyGradient();
   showScreen('screen-menu');
   layoutCanvas();
   lastT = performance.now();

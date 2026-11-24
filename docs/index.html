@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
   <title>Chromalith — Weave the Light</title>
   <meta name="description" content="Chromalith — a light-weaving puzzle. Slide rows and columns to route colored beams through mirrors, prisms and mixers. 1000 levels.">
-  <meta name="theme-color" content="#0d1220">
+  <meta name="theme-color" content="#0b1020">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -17,48 +17,238 @@
   <link rel="icon" href="favicon.png" type="image/png">
   <link rel="apple-touch-icon" href="icon-192.png">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="style.css?v=1.1.3">
+  <link rel="stylesheet" href="style.css?v=1.2.0">
 </head>
 <body>
+
+  <!-- ============ ambient background stage (SVG, all screens) ============ -->
+  <div class="stage" aria-hidden="true">
+    <svg class="stage-sky" viewBox="0 0 1440 900" preserveAspectRatio="xMidYMid slice">
+      <defs>
+        <radialGradient id="neb-red" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stop-color="var(--c-red)"/>
+          <stop offset="100%" stop-color="var(--c-red)" stop-opacity="0"/>
+        </radialGradient>
+        <radialGradient id="neb-teal" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stop-color="var(--c-teal)"/>
+          <stop offset="100%" stop-color="var(--c-teal)" stop-opacity="0"/>
+        </radialGradient>
+        <radialGradient id="neb-blue" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stop-color="var(--c-blue)"/>
+          <stop offset="100%" stop-color="var(--c-blue)" stop-opacity="0"/>
+        </radialGradient>
+        <radialGradient id="neb-violet" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stop-color="var(--c-violet)"/>
+          <stop offset="100%" stop-color="var(--c-violet)" stop-opacity="0"/>
+        </radialGradient>
+        <linearGradient id="ground-fade" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="var(--bg3)" stop-opacity="0"/>
+          <stop offset="100%" stop-color="var(--bg3)" stop-opacity="0.55"/>
+        </linearGradient>
+      </defs>
+      <!-- deep space base -->
+      <rect width="1440" height="900" fill="url(#sky-grad)"/>
+      <!-- far nebulae (slow drift) -->
+      <g class="nebulae neb-far">
+        <ellipse cx="210" cy="230" rx="360" ry="220" fill="url(#neb-violet)" opacity="0.14" class="neb-drift-a"/>
+        <ellipse cx="1230" cy="180" rx="400" ry="240" fill="url(#neb-blue)" opacity="0.13" class="neb-drift-b"/>
+      </g>
+      <!-- near nebulae (counter drift) -->
+      <g class="nebulae neb-near">
+        <ellipse cx="170" cy="760" rx="420" ry="260" fill="url(#neb-teal)" opacity="0.12" class="neb-drift-b"/>
+        <ellipse cx="1300" cy="740" rx="380" ry="240" fill="url(#neb-red)" opacity="0.12" class="neb-drift-a"/>
+      </g>
+      <!-- ground haze -->
+      <rect y="620" width="1440" height="280" fill="url(#ground-fade)"/>
+      <!-- star layers -->
+      <g class="stars-far">
+        <circle cx="1186" cy="608" r="0.7" fill="#dfe8ff" opacity="0.49"/><circle cx="996" cy="124" r="1.1" fill="#dfe8ff" opacity="0.42"/><circle cx="234" cy="394" r="1.2" fill="#dfe8ff" opacity="0.45"/><circle cx="109" cy="652" r="1.1" fill="#dfe8ff" opacity="0.56"/><circle cx="1357" cy="574" r="0.9" fill="#dfe8ff" opacity="0.26"/><circle cx="1139" cy="884" r="1.1" fill="#dfe8ff" opacity="0.38"/><circle cx="646" cy="127" r="1.3" fill="#dfe8ff" opacity="0.5"/><circle cx="419" cy="843" r="1.0" fill="#dfe8ff" opacity="0.33"/><circle cx="1423" cy="218" r="1.1" fill="#dfe8ff" opacity="0.46"/><circle cx="84" cy="94" r="0.8" fill="#dfe8ff" opacity="0.36"/><circle cx="521" cy="464" r="1.1" fill="#dfe8ff" opacity="0.52"/><circle cx="766" cy="801" r="1.2" fill="#dfe8ff" opacity="0.31"/><circle cx="301" cy="243" r="1.0" fill="#dfe8ff" opacity="0.57"/><circle cx="927" cy="663" r="0.9" fill="#dfe8ff" opacity="0.34"/><circle cx="1394" cy="508" r="1.0" fill="#dfe8ff" opacity="0.44"/><circle cx="594" cy="684" r="1.3" fill="#dfe8ff" opacity="0.37"/><circle cx="117" cy="464" r="1.0" fill="#dfe8ff" opacity="0.51"/><circle cx="1092" cy="361" r="1.2" fill="#dfe8ff" opacity="0.29"/><circle cx="348" cy="580" r="0.7" fill="#dfe8ff" opacity="0.47"/><circle cx="721" cy="266" r="1.0" fill="#dfe8ff" opacity="0.55"/><circle cx="1234" cy="731" r="1.1" fill="#dfe8ff" opacity="0.35"/><circle cx="40" cy="334" r="1.2" fill="#dfe8ff" opacity="0.42"/><circle cx="974" cy="447" r="0.9" fill="#dfe8ff" opacity="0.5"/><circle cx="672" cy="537" r="1.0" fill="#dfe8ff" opacity="0.38"/><circle cx="263" cy="747" r="1.1" fill="#dfe8ff" opacity="0.28"/><circle cx="855" cy="122" r="1.0" fill="#dfe8ff" opacity="0.53"/><circle cx="1442" cy="402" r="0.8" fill="#dfe8ff" opacity="0.45"/><circle cx="180" cy="58" r="1.0" fill="#dfe8ff" opacity="0.39"/><circle cx="486" cy="716" r="1.1" fill="#dfe8ff" opacity="0.33"/><circle cx="1301" cy="847" r="1.2" fill="#dfe8ff" opacity="0.4"/><circle cx="56" cy="816" r="0.9" fill="#dfe8ff" opacity="0.5"/><circle cx="1035" cy="528" r="1.0" fill="#dfe8ff" opacity="0.36"/><circle cx="701" cy="47" r="1.1" fill="#dfe8ff" opacity="0.48"/><circle cx="384" cy="173" r="0.8" fill="#dfe8ff" opacity="0.43"/><circle cx="1152" cy="491" r="1.0" fill="#dfe8ff" opacity="0.52"/><circle cx="232" cy="612" r="1.0" fill="#dfe8ff" opacity="0.31"/><circle cx="914" cy="780" r="1.1" fill="#dfe8ff" opacity="0.46"/><circle cx="1408" cy="76" r="1.0" fill="#dfe8ff" opacity="0.38"/><circle cx="613" cy="342" r="0.9" fill="#dfe8ff" opacity="0.49"/><circle cx="1013" cy="253" r="1.1" fill="#dfe8ff" opacity="0.33"/><circle cx="452" cy="298" r="1.0" fill="#dfe8ff" opacity="0.55"/><circle cx="774" cy="653" r="1.0" fill="#dfe8ff" opacity="0.41"/><circle cx="148" cy="698" r="1.1" fill="#dfe8ff" opacity="0.29"/><circle cx="1265" cy="345" r="0.9" fill="#dfe8ff" opacity="0.44"/><circle cx="541" cy="855" r="1.0" fill="#dfe8ff" opacity="0.35"/><circle cx="884" cy="394" r="1.0" fill="#dfe8ff" opacity="0.51"/><circle cx="318" cy="46" r="1.0" fill="#dfe8ff" opacity="0.4"/><circle cx="1094" cy="645" r="1.1" fill="#dfe8ff" opacity="0.47"/><circle cx="13" cy="204" r="0.9" fill="#dfe8ff" opacity="0.32"/>
+      </g>
+      <g class="stars-near">
+        <circle cx="734" cy="207" r="2.0" fill="#eaf0ff" opacity="0.68"/><circle cx="241" cy="122" r="1.9" fill="#eaf0ff" opacity="0.76"/><circle cx="1122" cy="459" r="1.7" fill="#eaf0ff" opacity="0.62"/><circle cx="407" cy="648" r="2.1" fill="#eaf0ff" opacity="0.7"/><circle cx="963" cy="79" r="1.6" fill="#eaf0ff" opacity="0.58"/><circle class="tw" style="--d:4.3s" cx="548" cy="384" r="2.2" fill="#ffffff" opacity="0.83"/><circle cx="1284" cy="626" r="1.8" fill="#eaf0ff" opacity="0.65"/><circle cx="76" cy="521" r="2.0" fill="#eaf0ff" opacity="0.72"/><circle class="tw" style="--d:3.1s" cx="1390" cy="291" r="2.1" fill="#ffffff" opacity="0.88"/><circle cx="655" cy="774" r="1.9" fill="#eaf0ff" opacity="0.6"/><circle cx="181" cy="434" r="1.7" fill="#eaf0ff" opacity="0.66"/><circle class="tw" style="--d:5.0s" cx="1006" cy="571" r="2.3" fill="#ffffff" opacity="0.79"/><circle cx="1189" cy="151" r="2.0" fill="#eaf0ff" opacity="0.63"/><circle cx="337" cy="803" r="1.8" fill="#eaf0ff" opacity="0.57"/><circle cx="867" cy="318" r="2.2" fill="#eaf0ff" opacity="0.74"/><circle cx="508" cy="47" r="1.6" fill="#eaf0ff" opacity="0.61"/><circle class="tw" style="--d:3.8s" cx="712" cy="522" r="2.0" fill="#ffffff" opacity="0.85"/><circle cx="1347" cy="783" r="1.7" fill="#eaf0ff" opacity="0.59"/><circle cx="26" cy="674" r="1.9" fill="#eaf0ff" opacity="0.68"/><circle cx="943" cy="876" r="2.1" fill="#eaf0ff" opacity="0.64"/><circle cx="449" cy="281" r="1.8" fill="#eaf0ff" opacity="0.71"/><circle cx="1098" cy="700" r="1.7" fill="#eaf0ff" opacity="0.6"/>
+      </g>
+      <g class="sparkles">
+        <path d="M141 155 L144.6 166.4 L156 170 L144.6 173.6 L141 185 L137.4 173.6 L126 170 L137.4 166.4 Z" fill="var(--accent)" opacity="0.85"/>
+        <path d="M1120 176 L1123.9 188.1 L1136 192 L1123.9 195.9 L1112 192 L1108.1 188.1 Z" fill="var(--accent)" opacity="0.75"/>
+        <path d="M413 668 L416.8 679.2 L428 683 L416.8 686.8 L405 683 L401.2 679.2 Z" fill="var(--accent)" opacity="0.7"/>
+        <path d="M1058 684 L1062.1 696.1 L1074 700 L1062.1 703.9 L1050 700 L1045.9 696.1 Z" fill="var(--accent)" opacity="0.8"/>
+      </g>
+    </svg>
+    <!-- drifting light motes (DOM, cheap) -->
+    <div class="motes">
+      <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+      <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+    </div>
+    <!-- vignette -->
+    <div class="vignette"></div>
+  </div>
+
   <div id="app">
 
     <!-- ======================= MAIN MENU ======================= -->
     <section class="screen active" id="screen-menu">
-      <div class="mm-bg">
-        <div class="mm-ray r1"></div>
-        <div class="mm-ray r2"></div>
-        <div class="mm-ray r3"></div>
-        <div class="mm-motes">
-          <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
-          <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
-        </div>
-      </div>
       <div class="mm-inner">
-        <div class="mm-gems-wrap"><span class="gem-ico">◆</span><span id="mm-gems">0</span></div>
-        <div class="mm-badge-1000" id="mm-badge-1000">1000 levels</div>
-        <h1 class="mm-title" id="mm-title">CHROMALITH</h1>
-        <div class="mm-tagline" id="mm-tagline">Weave the light</div>
-        <canvas class="mm-logo" id="mm-logo" width="360" height="170"></canvas>
-        <button class="btn big primary" id="mm-play">
-          <span id="mm-play-label">Play</span>
-          <span class="btn-sub" id="mm-level-badge">Level 1 / 1000</span>
-        </button>
-        <div class="mm-biome" id="mm-biome">Dawnshore</div>
-        <div class="mm-row">
-          <button class="btn icon" id="mm-daily" aria-label="Daily gift">🎁</button>
-          <button class="btn icon" id="mm-shop" aria-label="Shop">🛍️</button>
-          <button class="btn icon" id="mm-help" aria-label="Help">❓</button>
-          <button class="btn icon" id="mm-settings" aria-label="Settings">⚙️</button>
+
+        <!-- THE LOGO: obsidian monolith prism splitting one beam into a spectrum -->
+        <div class="logo-wrap" role="img" aria-label="Chromalith logo">
+          <svg class="logo" viewBox="0 0 640 300" fill="none">
+            <defs>
+              <linearGradient id="mono-face" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stop-color="#3d4c78"/>
+                <stop offset="55%" stop-color="#1b2444"/>
+                <stop offset="100%" stop-color="#10172e"/>
+              </linearGradient>
+              <linearGradient id="mono-face-lit" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stop-color="#8fa5e8"/>
+                <stop offset="60%" stop-color="#46589e"/>
+                <stop offset="100%" stop-color="#25305c"/>
+              </linearGradient>
+              <linearGradient id="mono-side" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#141b33"/>
+                <stop offset="100%" stop-color="#090d1c"/>
+              </linearGradient>
+              <linearGradient id="beam-white" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stop-color="#ffffff" stop-opacity="0"/>
+                <stop offset="55%" stop-color="#ffffff" stop-opacity="0.12"/>
+                <stop offset="100%" stop-color="#ffffff" stop-opacity="0.95"/>
+              </linearGradient>
+              <linearGradient id="gem-core" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#ffffff"/>
+                <stop offset="100%" stop-color="#cfe0ff"/>
+              </linearGradient>
+              <filter id="beam-glow" x="-40%" y="-40%" width="180%" height="180%">
+                <feGaussianBlur stdDeviation="7"/>
+              </filter>
+              <filter id="soft-glow" x="-60%" y="-60%" width="220%" height="220%">
+                <feGaussianBlur stdDeviation="4"/>
+              </filter>
+              <filter id="gem-shadow" x="-40%" y="-40%" width="180%" height="180%">
+                <feDropShadow dx="0" dy="7" stdDeviation="9" flood-color="#000" flood-opacity="0.5"/>
+              </filter>
+              <linearGradient id="word-grad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#ffffff"/>
+                <stop offset="60%" stop-color="#dfe8ff"/>
+                <stop offset="100%" stop-color="#9db4f0"/>
+              </linearGradient>
+            </defs>
+
+            <!-- halo behind the monolith -->
+            <ellipse class="logo-halo" cx="320" cy="128" rx="130" ry="86" fill="var(--accent)" opacity="0.1" filter="url(#soft-glow)"/>
+
+            <!-- incoming white beam (from the left, slightly down) -->
+            <g class="logo-beam-in">
+              <polygon points="-40,104 236,120 236,130 -40,116" fill="#ffffff" opacity="0.05" filter="url(#beam-glow)"/>
+              <polygon points="-40,106 236,121 236,129 -40,114" fill="url(#beam-white)"/>
+            </g>
+
+            <!-- spectrum fan out of the prism face -->
+            <g class="logo-spectrum">
+              <!-- glow passes -->
+              <g opacity="0.5" filter="url(#beam-glow)">
+                <polygon points="398,118 668,58 668,74 398,130" fill="var(--c-red)"/>
+                <polygon points="398,124 672,102 672,118 398,136" fill="var(--c-gold)"/>
+                <polygon points="398,130 672,148 672,164 398,142" fill="var(--c-teal)"/>
+                <polygon points="398,136 668,196 668,212 398,148" fill="var(--c-blue)"/>
+              </g>
+              <!-- crisp cores -->
+              <polygon points="398,120 668,63 668,71 398,128" fill="var(--c-red)"/>
+              <polygon points="398,126 672,106 672,114 398,134" fill="var(--c-gold)"/>
+              <polygon points="398,132 672,151 672,159 398,140" fill="var(--c-teal)"/>
+              <polygon points="398,138 668,199 668,207 398,146" fill="var(--c-blue)"/>
+              <!-- sparkle motes riding the beams -->
+              <circle class="spark s1" cx="0" cy="0" r="3" fill="#ffd9df"/>
+              <circle class="spark s2" cx="0" cy="0" r="2.6" fill="#fff3d0"/>
+              <circle class="spark s3" cx="0" cy="0" r="2.6" fill="#d0fff5"/>
+              <circle class="spark s4" cx="0" cy="0" r="3" fill="#d5e6ff"/>
+            </g>
+
+            <!-- THE MONOLITH -->
+            <g class="logo-monolith">
+              <!-- side face (right, darkest) -->
+              <polygon points="288,96 320,116 320,204 288,188" fill="url(#mono-side)"/>
+              <!-- front-left face (lit) -->
+              <polygon points="252,74 288,96 288,188 252,170" fill="url(#mono-face-lit)"/>
+              <!-- top face -->
+              <polygon points="252,74 288,54 320,76 288,96" fill="#4a5c9c" opacity="0.9"/>
+              <!-- top face back-right hint -->
+              <polygon points="288,54 320,76 320,84 288,64" fill="#0c1226"/>
+              <!-- inner glow slot where the beam enters -->
+              <polygon points="284,92 292,97 292,186 284,182" fill="var(--accent)" opacity="0.55" filter="url(#soft-glow)"/>
+              <!-- edge highlights -->
+              <polyline points="252,74 288,96 288,188" stroke="#8ea6f0" stroke-width="1.5" opacity="0.5" fill="none"/>
+              <polyline points="288,96 320,116 320,204" stroke="#5a6ea8" stroke-width="1" opacity="0.35" fill="none"/>
+              <!-- faceted glints -->
+              <polygon points="256,78 284,95 284,120 256,104" fill="#aebfff" opacity="0.12"/>
+              <polygon points="292,100 316,114 316,132 292,119" fill="#8ea6f0" opacity="0.08"/>
+              <!-- runic seams -->
+              <polyline points="266,84 266,158" stroke="#aebfff" stroke-width="0.8" opacity="0.18" fill="none"/>
+              <polyline points="304,108 304,182" stroke="#7c90c8" stroke-width="0.8" opacity="0.14" fill="none"/>
+              <!-- ground shadow -->
+              <ellipse cx="288" cy="212" rx="64" ry="10" fill="#000" opacity="0.45" filter="url(#soft-glow)"/>
+            </g>
+
+            <!-- the gem the spectrum converges on -->
+            <g class="logo-gem" filter="url(#gem-shadow)">
+              <polygon class="gem-glow" points="470,176 516,150 562,176 516,202" fill="var(--accent)" opacity="0.3" filter="url(#soft-glow)"/>
+              <polygon points="470,176 516,150 562,176 516,202" fill="url(#gem-core)"/>
+              <polygon points="516,150 562,176 516,176" fill="#e6efff"/>
+              <polygon points="470,176 516,176 516,202" fill="#b8ccf2"/>
+              <polyline points="470,176 516,202 562,176" stroke="#ffffff" stroke-width="1.4" opacity="0.85" fill="none"/>
+            </g>
+
+            <!-- WORDMARK -->
+            <g class="logo-word">
+              <text x="320" y="258" text-anchor="middle" class="word-main">CHROMALITH</text>
+              <text x="320" y="282" text-anchor="middle" class="word-sub">WEAVE THE LIGHT</text>
+            </g>
+          </svg>
         </div>
-        <div class="mm-version" id="mm-version">v1.0.0</div>
+
+        <div class="mm-biome-pill" id="mm-biome">
+          <svg class="pill-ico" viewBox="0 0 24 24" fill="none"><path d="M4 18 L8 10 L12 14 L16 6 L20 10" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span id="mm-biome-name">Dawnshore</span>
+          <span class="pill-sep"></span>
+          <span id="mm-progress-label">1 / 1000</span>
+        </div>
+
+        <button class="btn big primary" id="mm-play">
+          <svg class="btn-ico" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.6 v12.8 c0 .9 1 1.5 1.8 1 L20 13 c.8-.5.8-1.6 0-2 L9.8 4.6 C9 4 8 4.7 8 5.6 Z"/></svg>
+          <span class="btn-col"><span id="mm-play-label">Play</span><span class="btn-sub" id="mm-level-badge">Level 1 / 1000</span></span>
+        </button>
+
+        <div class="mm-row">
+          <button class="btn icon" id="mm-daily" aria-label="Daily gift">
+            <svg class="i" viewBox="0 0 24 24" fill="none"><path d="M4 9 h16 v3 a8 8 0 0 1-16 0 Z" fill="currentColor" opacity="0.9"/><path d="M4 9 c-1.8-1.8 1-5 3-3 M20 9 c1.8-1.8-1-5-3-3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M12 12 v8 M8 12 v6.5 M16 12 v6.5" stroke="#0d1220" stroke-width="1.4" stroke-linecap="round"/><rect x="10.6" y="5" width="2.8" height="4.4" rx="1.2" fill="currentColor"/></svg>
+          </button>
+          <button class="btn icon" id="mm-shop" aria-label="Shop">
+            <svg class="i" viewBox="0 0 24 24" fill="none"><path d="M5 8 h14 l-1.2 11 a2 2 0 0 1-2 1.8 H8.2 a2 2 0 0 1-2-1.8 Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M8.5 8 V7 a3.5 3.5 0 0 1 7 0 v1" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          </button>
+          <button class="btn icon" id="mm-help" aria-label="Help">
+            <svg class="i" viewBox="0 0 24 24" fill="none"><path d="M9.2 9 a2.9 2.9 0 1 1 4.3 2.6 c-1 .6-1.5 1.1-1.5 2.2" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"/><circle cx="12" cy="17.4" r="1.35" fill="currentColor"/></svg>
+          </button>
+          <button class="btn icon" id="mm-settings" aria-label="Settings">
+            <svg class="i" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3.2" stroke="currentColor" stroke-width="2"/><path d="M12 2.8 v3 M12 18.2 v3 M2.8 12 h3 M18.2 12 h3 M5.5 5.5 l2.1 2.1 M16.4 16.4 l2.1 2.1 M18.5 5.5 l-2.1 2.1 M7.6 16.4 l-2.1 2.1" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          </button>
+        </div>
+
+        <div class="mm-gems-wrap">
+          <svg class="gem-svg" viewBox="0 0 24 24" fill="none"><path d="M7 3 h10 l4 6 -9 12 L3 9 Z" fill="url(#gemg)" stroke="#ffe9a3" stroke-width="1"/><path d="M3 9 h18 M7 3 l5 6 -5 0 M17 3 l-5 6 5 0 M12 9 l0 12" stroke="#ffdf7e" stroke-width="0.9" opacity="0.8"/><defs><linearGradient id="gemg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#ffe9a3"/><stop offset="100%" stop-color="#ffb347"/></linearGradient></defs></svg>
+          <span id="mm-gems">0</span>
+        </div>
+
+        <div class="mm-version" id="mm-version">v1.2.0</div>
       </div>
     </section>
 
     <!-- ======================= GAME ======================= -->
     <section class="screen" id="screen-game">
       <header class="hud">
-        <button class="hud-btn" id="hud-map" aria-label="Map">🗺️</button>
-        <button class="hud-btn" id="hud-pause" aria-label="Pause">⏸️</button>
+        <button class="hud-btn" id="hud-map" aria-label="Map">
+          <svg class="i" viewBox="0 0 24 24" fill="none"><path d="M9 4 L3 6.5 v13.5 L9 17.5 15 20 21 17.5 V4 L15 6.5 9 4 Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M9 4 v13.5 M15 6.5 V20" stroke="currentColor" stroke-width="1.8"/></svg>
+        </button>
+        <button class="hud-btn" id="hud-pause" aria-label="Pause">
+          <svg class="i" viewBox="0 0 24 24" fill="currentColor"><rect x="6.5" y="5" width="4" height="14" rx="1.4"/><rect x="13.5" y="5" width="4" height="14" rx="1.4"/></svg>
+        </button>
         <div class="hud-center">
           <div class="hud-line1"><span id="hud-level">Level 1</span><span class="hud-sep">·</span><span id="hud-biome">Dawnshore</span></div>
           <div class="hud-line2">
@@ -67,27 +257,42 @@
             <span id="hud-moves">0 moves</span>
           </div>
         </div>
-        <div class="hud-gems"><span class="gem-ico">◆</span><span id="hud-gems">0</span></div>
+        <div class="hud-gems">
+          <svg class="gem-svg sm" viewBox="0 0 24 24" fill="none"><use href="#gem-shape"/><path d="M7 3 h10 l4 6 -9 12 L3 9 Z" fill="url(#gemg2)" stroke="#ffe9a3" stroke-width="1"/><path d="M3 9 h18 M12 9 l0 12" stroke="#ffdf7e" stroke-width="0.9" opacity="0.8"/><defs><linearGradient id="gemg2" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#ffe9a3"/><stop offset="100%" stop-color="#ffb347"/></linearGradient></defs></svg>
+          <span id="hud-gems">0</span>
+        </div>
       </header>
       <div class="board-wrap" id="board-wrap">
         <canvas id="game-canvas"></canvas>
       </div>
       <footer class="dock">
-        <button class="dock-btn" id="hud-undo"><span class="dock-ico">↩️</span><span class="dock-lbl" data-i18n="undo">Undo</span></button>
-        <button class="dock-btn" id="hud-restart"><span class="dock-ico">🔄</span><span class="dock-lbl" data-i18n="restart">Restart</span></button>
-        <button class="dock-btn accent" id="hud-hint"><span class="dock-ico">💡</span><span class="dock-lbl" data-i18n="hint">Insight</span></button>
-        <button class="dock-btn gold" id="hud-solve"><span class="dock-ico">✨</span><span class="dock-lbl" data-i18n="solve">Lumo solves</span></button>
+        <button class="dock-btn" id="hud-undo">
+          <svg class="dock-ico-svg" viewBox="0 0 24 24" fill="none"><path d="M8 5 L3.5 9.5 8 14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M3.5 9.5 H14 a6 6 0 0 1 0 12 h-3" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+          <span class="dock-lbl" data-i18n="undo">Undo</span>
+        </button>
+        <button class="dock-btn" id="hud-restart">
+          <svg class="dock-ico-svg" viewBox="0 0 24 24" fill="none"><path d="M20 12 a8 8 0 1 1-2.6-5.9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="M20 3 v5 h-5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span class="dock-lbl" data-i18n="restart">Restart</span>
+        </button>
+        <button class="dock-btn accent" id="hud-hint">
+          <svg class="dock-ico-svg" viewBox="0 0 24 24" fill="none"><path d="M12 3 a6.5 6.5 0 0 1 3.5 12 c-1 .7-1.5 1.3-1.5 2.5 h-4 c0-1.2-.5-1.8-1.5-2.5 A6.5 6.5 0 0 1 12 3 Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M10 20.5 h4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          <span class="dock-lbl" data-i18n="hint">Insight</span>
+        </button>
+        <button class="dock-btn gold" id="hud-solve">
+          <svg class="dock-ico-svg" viewBox="0 0 24 24" fill="none"><path d="M12 2.5 l1.8 5.7 5.7 1.8 -5.7 1.8 -1.8 5.7 -1.8-5.7 -5.7-1.8 5.7-1.8 Z" fill="currentColor"/><path d="M18.5 15.5 l.9 2.6 2.6 .9 -2.6 .9 -.9 2.6 -.9-2.6 -2.6-.9 2.6-.9 Z" fill="currentColor" opacity="0.8"/><path d="M5 15.5 l.7 2 2 .7 -2 .7 -.7 2 -.7-2 -2-.7 2-.7 Z" fill="currentColor" opacity="0.55"/></svg>
+          <span class="dock-lbl" data-i18n="solve">Lumo solves</span>
+        </button>
       </footer>
     </section>
 
     <!-- ======================= WIN ======================= -->
     <section class="screen overlay-screen" id="screen-win">
       <div class="panel win-panel">
-        <canvas id="win-canvas" width="320" height="200"></canvas>
+        <div class="win-rays" aria-hidden="true"></div>
         <div class="win-stars">
-          <span class="star" id="win-star-1">★</span>
-          <span class="star" id="win-star-2">★</span>
-          <span class="star" id="win-star-3">★</span>
+          <span class="star" id="win-star-1"><svg viewBox="0 0 24 24"><path d="M12 1.8 l3.1 6.9 7.1.8 -5.3 5 1.4 7.1 L12 17.9 5.7 21.6 7.1 14.5 1.8 9.5 8.9 8.7 Z"/></svg></span>
+          <span class="star" id="win-star-2"><svg viewBox="0 0 24 24"><path d="M12 1.8 l3.1 6.9 7.1.8 -5.3 5 1.4 7.1 L12 17.9 5.7 21.6 7.1 14.5 1.8 9.5 8.9 8.7 Z"/></svg></span>
+          <span class="star" id="win-star-3"><svg viewBox="0 0 24 24"><path d="M12 1.8 l3.1 6.9 7.1.8 -5.3 5 1.4 7.1 L12 17.9 5.7 21.6 7.1 14.5 1.8 9.5 8.9 8.7 Z"/></svg></span>
         </div>
         <h2 id="win-title">Radiant!</h2>
         <div class="win-sub" id="win-sub">Flawless weave</div>
@@ -95,10 +300,16 @@
           <span id="win-level">Level 1</span><span class="hud-sep">·</span><span id="win-moves">0 moves · par 2</span>
         </div>
         <div class="win-gems" id="win-gems">+12 gems</div>
-        <button class="btn gold hidden" id="win-x2"><span class="gem-ico">◆</span> <span data-i18n="x2gems">Double it</span> — <span data-i18n="watchAd">watch ad</span></button>
+        <button class="btn gold hidden" id="win-x2"><span data-i18n="x2gems">Double it</span> — <span data-i18n="watchAd">watch ad</span></button>
         <div class="win-row">
-          <button class="btn" id="win-map">🗺️ <span data-i18n="map">Map</span></button>
-          <button class="btn primary" id="win-next"><span data-i18n="next">Next</span> →</button>
+          <button class="btn" id="win-map">
+            <svg class="i" viewBox="0 0 24 24" fill="none"><path d="M9 4 L3 6.5 v13.5 L9 17.5 15 20 21 17.5 V4 L15 6.5 9 4 Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M9 4 v13.5 M15 6.5 V20" stroke="currentColor" stroke-width="1.8"/></svg>
+            <span data-i18n="map">Map</span>
+          </button>
+          <button class="btn primary" id="win-next">
+            <span data-i18n="next">Next</span>
+            <svg class="i" viewBox="0 0 24 24" fill="none"><path d="M4 12 h15 M13 6 l6 6 -6 6" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
         </div>
       </div>
     </section>
@@ -108,22 +319,46 @@
       <div class="panel">
         <h2 data-i18n="pause">Pause</h2>
         <div class="pause-col">
-          <button class="btn primary" id="pause-resume" data-i18n="resume">Resume</button>
-          <button class="btn" id="pause-restart" data-i18n="restart">Restart</button>
-          <button class="btn" id="pause-map" data-i18n="map">Map</button>
-          <button class="btn" id="pause-settings" data-i18n="settings">Settings</button>
+          <button class="btn primary" id="pause-resume">
+            <svg class="i" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.6 v12.8 c0 .9 1 1.5 1.8 1 L20 13 c.8-.5.8-1.6 0-2 L9.8 4.6 C9 4 8 4.7 8 5.6 Z"/></svg>
+            <span data-i18n="resume">Resume</span>
+          </button>
+          <button class="btn" id="pause-restart">
+            <svg class="i" viewBox="0 0 24 24" fill="none"><path d="M20 12 a8 8 0 1 1-2.6-5.9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="M20 3 v5 h-5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span data-i18n="restart">Restart</span>
+          </button>
+          <button class="btn" id="pause-map">
+            <svg class="i" viewBox="0 0 24 24" fill="none"><path d="M9 4 L3 6.5 v13.5 L9 17.5 15 20 21 17.5 V4 L15 6.5 9 4 Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M9 4 v13.5 M15 6.5 V20" stroke="currentColor" stroke-width="1.8"/></svg>
+            <span data-i18n="map">Map</span>
+          </button>
+          <button class="btn" id="pause-settings">
+            <svg class="i" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3.2" stroke="currentColor" stroke-width="2"/><path d="M12 2.8 v3 M12 18.2 v3 M2.8 12 h3 M18.2 12 h3 M5.5 5.5 l2.1 2.1 M16.4 16.4 l2.1 2.1 M18.5 5.5 l-2.1 2.1 M7.6 16.4 l-2.1 2.1" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            <span data-i18n="settings">Settings</span>
+          </button>
         </div>
       </div>
     </section>
 
     <!-- ======================= SETTINGS ======================= -->
     <section class="screen" id="screen-settings">
-      <header class="sub-header"><button class="hud-btn" id="set-back">←</button><h2 data-i18n="settings">Settings</h2><span class="spacer"></span></header>
+      <header class="sub-header">
+        <button class="hud-btn" id="set-back" aria-label="Back"><svg class="i" viewBox="0 0 24 24" fill="none"><path d="M14.5 5 L7.5 12 l7 7" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+        <h2 data-i18n="settings">Settings</h2><span class="spacer"></span>
+      </header>
       <div class="scroll-body">
         <div class="set-group">
-          <div class="set-row toggle" id="set-music"><span data-i18n="music">Music</span><span class="knob"></span></div>
-          <div class="set-row toggle" id="set-sfx"><span data-i18n="sfx">Sounds</span><span class="knob"></span></div>
-          <div class="set-row toggle" id="set-haptics"><span data-i18n="haptics">Vibration</span><span class="knob"></span></div>
+          <div class="set-row toggle" id="set-music">
+            <span class="set-row-l"><svg class="i" viewBox="0 0 24 24" fill="none"><path d="M9 18 V5.5 l10-2 V16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="6.8" cy="18" r="2.6" stroke="currentColor" stroke-width="2"/><circle cx="16.8" cy="16" r="2.6" stroke="currentColor" stroke-width="2"/></svg><span data-i18n="music">Music</span></span>
+            <span class="knob"></span>
+          </div>
+          <div class="set-row toggle" id="set-sfx">
+            <span class="set-row-l"><svg class="i" viewBox="0 0 24 24" fill="none"><path d="M4 9.5 v5 h3.5 L13 19 V5 L7.5 9.5 Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M16.5 8.5 a5.5 5.5 0 0 1 0 7 M19 6 a9 9 0 0 1 0 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span data-i18n="sfx">Sounds</span></span>
+            <span class="knob"></span>
+          </div>
+          <div class="set-row toggle" id="set-haptics">
+            <span class="set-row-l"><svg class="i" viewBox="0 0 24 24" fill="none"><rect x="8" y="3.5" width="8" height="17" rx="2.2" stroke="currentColor" stroke-width="2"/><path d="M4 9 v6 M20 9 v6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span data-i18n="haptics">Vibration</span></span>
+            <span class="knob"></span>
+          </div>
         </div>
         <div class="set-group">
           <div class="set-label" data-i18n="language">Language</div>
@@ -135,10 +370,10 @@
           </div>
         </div>
         <div class="set-group">
-          <div class="set-row danger" id="set-reset" data-i18n="resetProgress">Reset progress</div>
+          <div class="set-row danger" id="set-reset"><span data-i18n="resetProgress">Reset progress</span></div>
         </div>
         <div class="set-meta">
-          <div><span data-i18n="version">Version</span> <span id="set-version">v1.0.0</span></div>
+          <div><span data-i18n="version">Version</span> <span id="set-version">v1.2.0</span></div>
           <a href="privacy.html" target="_blank" data-privacy><span data-i18n="privacy">Privacy</span></a>
         </div>
       </div>
@@ -146,10 +381,16 @@
 
     <!-- ======================= SHOP ======================= -->
     <section class="screen" id="screen-shop">
-      <header class="sub-header"><button class="hud-btn" id="shop-back">←</button><h2 data-i18n="shop">Shop</h2><span class="hud-gems"><span class="gem-ico">◆</span><span id="shop-gems">0</span></span></header>
+      <header class="sub-header">
+        <button class="hud-btn" id="shop-back" aria-label="Back"><svg class="i" viewBox="0 0 24 24" fill="none"><path d="M14.5 5 L7.5 12 l7 7" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+        <h2 data-i18n="shop">Shop</h2>
+        <div class="hud-gems"><svg class="gem-svg sm" viewBox="0 0 24 24" fill="none"><path d="M7 3 h10 l4 6 -9 12 L3 9 Z" fill="url(#gemg3)" stroke="#ffe9a3" stroke-width="1"/><path d="M3 9 h18 M12 9 l0 12" stroke="#ffdf7e" stroke-width="0.9" opacity="0.8"/><defs><linearGradient id="gemg3" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#ffe9a3"/><stop offset="100%" stop-color="#ffb347"/></linearGradient></defs></svg><span id="shop-gems">0</span></div>
+      </header>
       <div class="scroll-body">
         <div class="shop-item main" id="shop-remove">
-          <div class="shop-ico">🚫</div>
+          <div class="shop-ico">
+            <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#ffd23f" stroke-width="2"/><path d="M5.5 5.5 l13 13" stroke="#ffd23f" stroke-width="2" stroke-linecap="round"/></svg>
+          </div>
           <div class="shop-info">
             <div class="shop-name" data-i18n="shopRemoveAds">Remove ads</div>
             <div class="shop-desc" data-i18n="shopRemoveAdsDesc">No more interstitials, forever</div>
@@ -158,7 +399,9 @@
         </div>
         <div class="shop-grid">
           <div class="shop-item" id="shop-pack1">
-            <div class="shop-ico">💠</div>
+            <div class="shop-ico">
+              <svg viewBox="0 0 24 24" fill="none"><path d="M7 3 h10 l4 6 -9 12 L3 9 Z" fill="url(#sg1)" stroke="#9fe8ff" stroke-width="1"/><path d="M3 9 h18 M12 9 l0 12" stroke="#9fe8ff" stroke-width="0.9" opacity="0.8"/><defs><linearGradient id="sg1" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#b8f0ff"/><stop offset="100%" stop-color="#3fb6e8"/></linearGradient></defs></svg>
+            </div>
             <div class="shop-info">
               <div class="shop-name" data-i18n="shopPack1">Pocket of gems</div>
               <div class="shop-desc" data-i18n="shopPack1Desc">500 gems</div>
@@ -166,7 +409,9 @@
             <button class="btn gold buy">$0.99</button>
           </div>
           <div class="shop-item" id="shop-pack2">
-            <div class="shop-ico">🔮</div>
+            <div class="shop-ico">
+              <svg viewBox="0 0 24 24" fill="none"><path d="M12 2 l3.5 3 -3.5 3 -3.5-3 Z M5.5 8.5 l3.5 3 -3.5 3 -3.5-3 Z M18.5 8.5 l3.5 3 -3.5 3 -3.5-3 Z M12 15 l3.5 3 -3.5 4 -3.5-4 Z" fill="url(#sg2)" stroke="#d5a8ff" stroke-width="1"/><defs><linearGradient id="sg2" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#e3ccff"/><stop offset="100%" stop-color="#a855f7"/></linearGradient></defs></svg>
+            </div>
             <div class="shop-info">
               <div class="shop-name" data-i18n="shopPack2">Chest of gems</div>
               <div class="shop-desc" data-i18n="shopPack2Desc">1500 gems — best value</div>
@@ -174,7 +419,9 @@
             <button class="btn gold buy">$1.99</button>
           </div>
           <div class="shop-item" id="shop-pack3">
-            <div class="shop-ico">🧿</div>
+            <div class="shop-ico">
+              <svg viewBox="0 0 24 24" fill="none"><path d="M12 2.5 l2.2 4.4 4.8.8 -3.4 3.5.7 4.9 -4.3-2.4 -4.3 2.4.7-4.9 -3.4-3.5 4.8-.8 Z" fill="url(#sg3)" stroke="#8ff0c8" stroke-width="1"/><defs><linearGradient id="sg3" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#c8ffe6"/><stop offset="100%" stop-color="#2bd97b"/></linearGradient></defs></svg>
+            </div>
             <div class="shop-info">
               <div class="shop-name" data-i18n="shopPack3">Vault of gems</div>
               <div class="shop-desc" data-i18n="shopPack3Desc">4000 gems</div>
@@ -188,7 +435,10 @@
 
     <!-- ======================= HELP ======================= -->
     <section class="screen" id="screen-help">
-      <header class="sub-header"><button class="hud-btn" id="help-back">←</button><h2 data-i18n="help">How to play</h2><span class="spacer"></span></header>
+      <header class="sub-header">
+        <button class="hud-btn" id="help-back" aria-label="Back"><svg class="i" viewBox="0 0 24 24" fill="none"><path d="M14.5 5 L7.5 12 l7 7" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+        <h2 data-i18n="help">How to play</h2><span class="spacer"></span>
+      </header>
       <div class="scroll-body">
         <div class="help-intro" data-i18n="tut1">Drag a row or column to slide it. Light must reach every crystal.</div>
         <div id="help-list" class="help-list"></div>
@@ -197,9 +447,14 @@
 
     <!-- ======================= DAILY ======================= -->
     <section class="screen" id="screen-daily">
-      <header class="sub-header"><button class="hud-btn" id="daily-back">←</button><h2 data-i18n="dailyGift">Daily gift</h2><span class="spacer"></span></header>
+      <header class="sub-header">
+        <button class="hud-btn" id="daily-back" aria-label="Back"><svg class="i" viewBox="0 0 24 24" fill="none"><path d="M14.5 5 L7.5 12 l7 7" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+        <h2 data-i18n="dailyGift">Daily gift</h2><span class="spacer"></span>
+      </header>
       <div class="scroll-body center">
-        <div class="daily-ico">🎁</div>
+        <div class="daily-ico">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M4 9 h16 v3 a8 8 0 0 1-16 0 Z" fill="url(#dg1)"/><path d="M4 9 c-1.8-1.8 1-5 3-3 M20 9 c1.8-1.8-1-5-3-3" stroke="url(#dg1)" stroke-width="1.8" stroke-linecap="round"/><path d="M12 12 v8 M8 12 v6.5 M16 12 v6.5" stroke="#5a3400" stroke-width="1.4" stroke-linecap="round"/><rect x="10.6" y="5" width="2.8" height="4.4" rx="1.2" fill="url(#dg1)"/><defs><linearGradient id="dg1" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#ffe9a3"/><stop offset="100%" stop-color="#ffb347"/></linearGradient></defs></svg>
+        </div>
         <div class="daily-state" id="daily-state">+50 gems</div>
         <button class="btn primary" id="daily-btn" data-i18n="claim">Claim</button>
       </div>
@@ -207,7 +462,10 @@
 
     <!-- ======================= MAP ======================= -->
     <section class="screen" id="screen-map">
-      <header class="sub-header"><button class="hud-btn" id="map-back">←</button><h2 data-i18n="map">Map</h2><span class="spacer"></span></header>
+      <header class="sub-header">
+        <button class="hud-btn" id="map-back" aria-label="Back"><svg class="i" viewBox="0 0 24 24" fill="none"><path d="M14.5 5 L7.5 12 l7 7" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+        <h2 data-i18n="map">Map</h2><span class="spacer"></span>
+      </header>
       <div class="scroll-body">
         <div class="map-progress" id="map-progress">progress</div>
         <div id="map-biomes" class="map-biomes"></div>
@@ -217,7 +475,9 @@
     <!-- ======================= TUTORIAL OVERLAY ======================= -->
     <div class="tutorial hidden" id="tutorial-overlay">
       <div class="tut-box">
-        <div class="tut-lumo">✨</div>
+        <div class="tut-lumo">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M12 2.5 l1.8 5.7 5.7 1.8 -5.7 1.8 -1.8 5.7 -1.8-5.7 -5.7-1.8 5.7-1.8 Z" fill="#ffd23f"/><path d="M18.5 15.5 l.9 2.6 2.6 .9 -2.6 .9 -.9 2.6 -.9-2.6 -2.6-.9 2.6-.9 Z" fill="#ffd23f" opacity="0.8"/><path d="M5 15.5 l.7 2 2 .7 -2 .7 -.7 2 -.7-2 -2-.7 2-.7 Z" fill="#ffd23f" opacity="0.55"/></svg>
+        </div>
         <div class="tut-text" id="tut-text">Drag a row or column to slide it.</div>
         <button class="btn primary" id="tut-ok" data-i18n="close">Got it</button>
       </div>
@@ -235,6 +495,6 @@
     </div>
 
   </div>
-  <script src="app.js?v=1.1.3" defer></script>
+  <script src="app.js?v=1.2.0" defer></script>
 </body>
 </html>
