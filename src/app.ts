@@ -67,6 +67,10 @@ async function loadLevels(): Promise<void> {
 let save: SaveState;
 let renderer: Renderer;
 let session: Session | null = null;
+// debug handle (read-only, used by automated tests)
+Object.defineProperty(window, '__chromalith', {
+  value: { get session() { return session; }, get renderer() { return renderer; } },
+});
 let canvas: HTMLCanvasElement;
 let raf = 0;
 let lastT = 0;
@@ -510,13 +514,20 @@ async function onSolve(): Promise<void> {
     updateHudGems();
   }
   session.usedSolve = true;
-  // Lumo steps through the solution with a delay for visibility
+  // Lumo steps through the solution with a delay for visibility.
+  // If the player diverged from the stored path (and greedy can't improve),
+  // rewind the board to its start so the planned solution applies cleanly.
   const step = (): void => {
     if (!session || session.won) return;
     let more = session.applyPlannedStep();
     if (!more) {
       // diverged from the stored path: fall back to greedy improvement
       more = session.applyGreedyStep();
+    }
+    if (!more) {
+      // stuck off-path with no single-step improvement: rewind and replay
+      session.rewindToStart();
+      more = session.applyPlannedStep();
     }
     if (more) setTimeout(step, 700);
   };

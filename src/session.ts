@@ -155,6 +155,18 @@ export class Session {
     this.events.onSinksChanged(st.ok, st.total);
   }
 
+  /** Rewind the board to its start (Lumo fallback when off-path). */
+  rewindToStart(): void {
+    this.board = cloneBoard(this.start);
+    this.history = [];
+    this.moves = 0;
+    this.invalidate();
+    this.refreshSolvedSet();
+    const st = this.stats;
+    this.events.onSinksChanged(st.ok, st.total);
+    this.events.onShift();
+  }
+
   /* ------------------------------------------------------------------ */
   /* hints + Lumo auto-solve                                             */
 
@@ -295,67 +307,41 @@ export class Session {
   }
 
   /* ------------------------------------------------------------------ */
-  /* belt math                                                           */
+  /* drag + settle animation                                             */
   /*                                                                     */
-  /* The movable slots of a line form a closed belt: positions p_0..    */
-  /* p_{m-1}, wrapping by len. slotAt(u, t) = where the cell that       */
-  /* started at belt-slot u (INTEGER u) sits at belt time t — a         */
-  /* piecewise lerp through slot positions, so at every integer t every */
-  /* cell is exactly ON a slot (the logical shifted board) and motion   */
-  /* is continuous.                                                      */
+  /* DRAG: the line's movable cells follow the finger RIGIDLY — every    */
+  /* cell gets the same offset t (cells). The renderer draws wrap copies */
+  /* (linePos ± len) so the strip reads as a conveyor: cells leaving one */
+  /* edge re-enter at the other, still following the finger 1:1.         */
   /*                                                                     */
-  /* Rendering: during a drag, slot j still owns cell j:                 */
-  /*   offset[j] = slotAt(j, t) - p_j                                    */
-  /* After a commit by `shift`, new slot j owns the cell from slot       */
-  /* j - shift:                                                          */
-  /*   offset[j] = slotAt(j - shift, τ) - p_j    (0 at τ = shift)        */
-  /* The two agree at the release instant, so the handoff never jumps.  */
+  /* RELEASE commits k = round(t·m/len) slot steps (for gapless lines    */
+  /* m = len, so this is exactly round(t) — one cell). The board shifts  */
+  /* at once and every cell GLIDES THE SHORT WAY from where the finger   */
+  /* left it to its new slot (per-cell wrap by ±len, |from| ≤ len/2).    */
+  /* The release frame is pixel-identical to the drag frame, nothing     */
+  /* ever teleports, and the wrap cell continues FORWARD through the     */
+  /* edge instead of flying back across the board.                       */
 
-  /** belt coordinate of belt-slot u (any integer; wraps by len) */
-  private beltPos(positions: number[], m: number, len: number, u: number): number {
-    const w = Math.floor(u / m);
-    const s = u - w * m;
-    return positions[s] + w * len;
+  /** wrap x into (-len/2, len/2] — the shortest way around the belt */
+  private shortestWrap(x: number, len: number): number {
+    return x - len * Math.round(x / len);
   }
 
-  /** position at belt time t of the cell that started at belt-slot u */
-  private slotAt(positions: number[], m: number, len: number, u: number, t: number): number {
-    const k = Math.floor(t);
-    const frac = t - k;
-    const a = this.beltPos(positions, m, len, u + k);
-    const b = this.beltPos(positions, m, len, u + k + 1);
-    return a + (b - a) * frac;
-  }
-
-  /** raw finger px → belt shift units, normalized to (-m/2, m/2]
-   *  (t and t+m are the same visual state, so this never jumps) */
-  private beltT(axis: 0 | 1, m: number, px: number): number {
-    const len = axis === 0 ? this.board.w : this.board.h;
-    const raw = (px / this.renderer.cell) * (m / len);
-    return raw - m * Math.round(raw / m);
-  }
-
-  /* ------------------------------------------------------------------ */
-  /* drag API                                                            */
-
-  /** Finger is dragging a line: slot j still owns cell j. */
+  /** Finger is dragging a line: rigid 1:1 offset for every movable cell. */
   dragTo(axis: 0 | 1, index: number, px: number): void {
     if (this.won) return;
     const m = this.movableInLine(index, axis);
     if (m < 2) return;
-    const len = axis === 0 ? this.board.w : this.board.h;
-    const t = this.beltT(axis, m, px);
+    const t = px / this.renderer.cell;
     this.lastDrag = { axis, index, t };
-    this.slideGen++; // any in-flight glide is superseded
+    this.slideGen++; // any in-flight settle is superseded
     const slide = this.makeSlide(axis, index);
-    for (let j = 0; j < m; j++) {
-      slide.offsets[j] = this.slotAt(slide.positions, m, len, j, t) - slide.positions[j];
-    }
+    slide.offsets.fill(t);
     this.renderer.slide = slide;
   }
 
-  /** Finger released: commit the rounded shift or spring back to rest.
-   *  Returns the effective committed shift (0 = sprang back). */
+  /** Finger released: commit the rounded shift or settle back to rest.
+   *  Returns the effective committed shift (0 = settled back). */
   endDrag(axis: 0 | 1, index: number, px: number): number {
     this.lastDrag = null;
     const m = this.movableInLine(index, axis);
@@ -363,16 +349,18 @@ export class Session {
       this.renderer.slide = null;
       return 0;
     }
-    const t = this.beltT(axis, m, px);
-    const k = Math.round(t);
+    const len = axis === 0 ? this.board.w : this.board.h;
+    // normalize to one belt turn: t and t ± len show the same strip, and a
+    // normalized t keeps the commit handoff pixel-identical
+    const t = this.shortestWrap(px / this.renderer.cell, len);
+    const k = Math.round((t * m) / len);
     this.renderer.slide = null;
     if (((k % m) + m) % m === 0) {
-      // spring back: slot j still owns cell j; glide t → 0
-      this.glideBelt(axis, index, 0, t, 0, 170);
+      this.glideUniform(axis, index, t, 0, 160);
       return 0;
     }
     const ok = this.shift(axis, index, k, t);
-    if (!ok) this.glideBelt(axis, index, 0, t, 0, 170);
+    if (!ok) this.glideUniform(axis, index, t, 0, 160);
     return ok ? ((k % m) + m) % m : 0;
   }
 
@@ -381,51 +369,50 @@ export class Session {
     const d = this.lastDrag;
     this.lastDrag = null;
     this.renderer.slide = null;
-    if (d) this.glideBelt(d.axis, d.index, 0, d.t, 0, 170);
+    if (d) {
+      const len = d.axis === 0 ? this.board.w : this.board.h;
+      this.glideUniform(d.axis, d.index, this.shortestWrap(d.t, len), 0, 160);
+    }
   }
 
-  /** Commit glide: the board is already shifted by `amt`; new slot j owns
-   *  the cell from slot j-amt. offset[j] = slotAt(j - amt, τ) - p_j,
-   *  which is 0 at τ = amt and matches the finger at τ = fingerT. */
+  /** Commit settle: the board is already shifted by `amt`; new slot j owns
+   *  the cell that came from old slot (j-amt) mod m. That cell was left by
+   *  the finger at oldPos + t, so slot j's offset starts at
+   *  shortestWrap(oldPos - p_j + t, len) and glides to 0. */
   private animateCommit(axis: 0 | 1, index: number, amt: number, m: number, fingerT?: number): void {
-    // glide the SHORT way: target ≡ amt (mod m) in (-m/2, m/2]
-    let target = ((amt % m) + m) % m;
-    if (target > m / 2) target -= m;
-    const startT = fingerT !== undefined ? fingerT : 0;
-    // nearest t ≡ target (mod m) to the finger position
-    const toT = target + m * Math.round((startT - target) / m);
-    // offset[j](τ) = slotAt(j - target, τ) - p_j  — note: j - target, so
-    // that at τ = target the offset is 0 for every slot.
-    this.glideBelt(axis, index, target, startT, toT, 170);
+    const len = axis === 0 ? this.board.w : this.board.h;
+    const slide = this.makeSlide(axis, index); // post-shift slots
+    const { positions } = slide;
+    const from: number[] = new Array<number>(m);
+    const to: number[] = new Array<number>(m).fill(0);
+    for (let j = 0; j < m; j++) {
+      const old = positions[((j - amt) % m + m) % m];
+      from[j] = this.shortestWrap(old - positions[j] + (fingerT ?? 0), len);
+    }
+    this.glideOffsets(slide, from, to, 145);
   }
 
-  /** Glide belt time from fromT to toT around reference shift `refShift`:
-   *  offset[j](τ) = slotAt(j - refShift, τ) - slotAt(j - refShift, refShift). */
-  private glideBelt(
-    axis: 0 | 1, index: number,
-    refShift: number, fromT: number, toT: number, dur: number,
-  ): void {
+  /** Uniform settle: every cell glides from offset a to offset b. */
+  private glideUniform(axis: 0 | 1, index: number, a: number, b: number, dur: number): void {
+    const m = this.movableInLine(index, axis);
+    const slide = this.makeSlide(axis, index);
+    this.glideOffsets(slide, new Array<number>(m).fill(a), new Array<number>(m).fill(b), dur);
+  }
+
+  /** Ease the slide's per-cell offsets from `from` to `to` (cells). */
+  private glideOffsets(slide: SlideState, from: number[], to: number[], dur: number): void {
     const r = this.renderer;
     const id = ++this.slideGen;
-    const slide = this.makeSlide(axis, index);
-    const { positions } = slide;
-    const m = positions.length;
-    const len = axis === 0 ? this.board.w : this.board.h;
-    const setOffsets = (u: number): void => {
-      for (let j = 0; j < m; j++) {
-        slide.offsets[j] =
-          this.slotAt(positions, m, len, j - refShift, u) -
-          this.slotAt(positions, m, len, j - refShift, refShift);
-      }
-    };
-    setOffsets(fromT);
+    slide.offsets = from.slice();
     r.slide = slide;
     const t0 = performance.now();
     const tick = (now: number): void => {
       if (id !== this.slideGen) return; // superseded
       const kk = Math.min(1, (now - t0) / dur);
-      const e = 1 - (1 - kk) * (1 - kk); // ease-out
-      setOffsets(fromT + (toT - fromT) * e);
+      const e = 1 - Math.pow(1 - kk, 3); // ease-out cubic
+      for (let j = 0; j < from.length; j++) {
+        slide.offsets[j] = from[j] + (to[j] - from[j]) * e;
+      }
       if (kk < 1) requestAnimationFrame(tick);
       else if (r.slide === slide) r.slide = null;
     };

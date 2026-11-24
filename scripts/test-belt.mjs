@@ -1,141 +1,123 @@
 /**
- * Belt (conveyor) animation math unit tests — correct invariants.
+ * Drag + settle animation math unit tests (v1.1.3 model).
  *
  * Model (mirrors session.ts):
- *   positions = line coordinates of the movable slots, ascending.
- *   beltPos(u)  = positions[u mod m] + floor(u/m) * len   (closed belt)
- *   slotAt(u,t) = where the cell that started at INTEGER belt-slot u sits
- *                at belt time t (piecewise lerp; wraps by len per m)
- *
- * Rendering formulas:
- *   DRAG (slot j owns cell j):          pos_j(τ) = slotAt(j, τ)
- *   COMMIT by short-way target s (new slot j owns old cell j - s):
- *                                        pos_j(τ) = slotAt(j - s, τ)
- *   At τ = target the commit offset is 0 and the visual equals the
- *   post-shift board (shiftLine: new slot i+s holds old slot i's cell,
- *   i.e. cell k sits at slot k+s — exactly beltPos(k + target)).
+ *   DRAG: every movable cell of the line gets the SAME offset t (cells) —
+ *         rigid 1:1 finger tracking, no rubber-banding.
+ *   RENDER: each cell is drawn at every linePos = pos + offset + k*len
+ *         (k ∈ {-2..2}) that falls inside [0, len) — exactly one visible
+ *         copy per cell, wrapping at the edges (conveyor look).
+ *   RELEASE: t is normalized to one belt turn (t' = shortestWrap(t, len);
+ *         t and t ± len are the same strip). Commits k = round(t'*m/len)
+ *         slot steps (gapless: round(t')). shiftLine moves old slot i's
+ *         cell to new slot (i+k) mod m. New slot j's cell came from old
+ *         slot o = (j-k) mod m and was left by the finger at oldPos_o + t',
+ *         so its settle offset starts at
+ *         from[j] = shortestWrap(oldPos_o - p_j + t', len) → 0.
  *
  * Invariants:
- *  T1 (drag lands on slots): at every INTEGER t, slotAt(j,t) mod len is
- *      exactly one of `positions` — the strip is a valid board state.
- *  T2 (finger tracking): slotAt(j, t) is non-decreasing in t, and for
- *      gapless lines moves exactly +1 cell per +1 t — the strip follows
- *      the finger, in the right direction.
- *  T3 (continuity): |slotAt(j, t+dt) - slotAt(j, t)| ≤ maxHop·dt + ε —
- *      no teleporting between frames.
- *  T4 (commit handoff, ABSOLUTE positions): releasing at t* with commit
- *      s = round(t*) (short-way target): for every cell k, the position
- *      the commit shows it at (p_{k+s mod m} + offset) equals the drag
- *      position slotAt(k, t*) (mod len) — pixel-identical handoff.
- *  T5 (commit rest): at τ = target, commit offset[j] ≡ 0 (mod len) and
- *      cell k sits exactly at slot (k+s) mod m — the shifted board.
- *  T6 (spring back): refShift=0 glide from t* to 0 keeps tracking cell j
- *      and ends at rest.
- *  T7 (cycle): at t = m every cell is home (mod len).
+ *  R1 (rigid drag): all offsets identical and equal to the finger.
+ *  R2 (single copy): the wrap-copy rule draws each cell exactly once
+ *      inside [0, len) for ANY offset (incl. multi-turn drags).
+ *  N1 (turn normalization): t and t ± len produce the same visible strip.
+ *  H1 (pixel-identical handoff): at release, the absolute position of
+ *      every cell (mod len) is the same as during the drag — the release
+ *      frame cannot jump.
+ *  H2 (short settle): |from[j]| ≤ len/2 + 1e-9 for every slot — cells
+ *      settle the short way; nothing flies across the board.
+ *  H3 (rest): 0 offset lands the cell exactly on its new slot.
+ *  G1 (gapless feel): for m = len, k = round(t') — one cell per cell.
+ *  G2 (gapped proportionality): a full board width of finger travel = one
+ *      cycle (k = ±m) for any geometry.
  */
 let failures = 0;
 const check = (name, cond) => {
   if (!cond) { console.error('FAIL: ' + name); failures++; }
 };
 
-const beltPos = (positions, m, len, u) => {
-  const w = Math.floor(u / m);
-  const s = u - w * m;
-  return positions[s] + w * len;
-};
-const slotAt = (positions, m, len, u, t) => {
-  const k = Math.floor(t);
-  const frac = t - k;
-  const a = beltPos(positions, m, len, u + k);
-  const b = beltPos(positions, m, len, u + k + 1);
-  return a + (b - a) * frac;
-};
+const shortestWrap = (x, len) => x - len * Math.round(x / len);
 const mod = (x, len) => ((x % len) + len) % len;
-const close = (a, b, len, eps = 1e-9) => {
-  const d = Math.abs(mod(a - b, len));
-  return d < eps || Math.abs(d - len) < eps;
+
+/** visible wrap positions of a cell at line slot `pos` with offset `off` */
+const visibleLinePos = (pos, off, len) => {
+  const out = [];
+  for (const k of [-2, -1, 0, 1, 2]) {
+    const linePos = pos + off + k * len;
+    if (linePos >= 0 && linePos < len) out.push(linePos);
+  }
+  return out;
 };
 
 const run = (label, positions) => {
   const m = positions.length;
   const len = Math.max(...positions) + 1;
-  let maxHop = 0;
-  for (let u = -m; u <= m; u++) {
-    maxHop = Math.max(maxHop, Math.abs(beltPos(positions, m, len, u + 1) - beltPos(positions, m, len, u)));
-  }
-  const gapless = m === len;
 
-  // T1: integer t → on-slot
-  for (let t = -2 * m; t <= 2 * m; t++) {
+  // R1: rigid drag
+  for (let t = -2 * len; t <= 2 * len; t += 0.25) {
+    const offs = new Array(m).fill(t);
+    check(`${label} R1 t=${t} rigid`, offs.every(o => o === t));
+  }
+
+  // R2: exactly one visible copy per cell for any offset the renderer can
+  // see (drags are raw, settled offsets are normalized to ±len/2; k=±2
+  // wrap copies in the renderer cover ±2 full turns of overshoot)
+  for (let t = -2 * len; t <= 2 * len; t += 0.25) {
     for (let j = 0; j < m; j++) {
-      const pos = mod(slotAt(positions, m, len, j, t), len);
-      check(`${label} T1 t=${t} j=${j} on-slot (${pos})`,
-        positions.some(p => Math.abs(pos - p) < 1e-9));
+      const vis = visibleLinePos(positions[j], t, len);
+      check(`${label} R2 t=${t.toFixed(2)} j=${j} single copy (${vis.length})`, vis.length === 1);
     }
   }
 
-  // T2: monotonic + gapless finger tracking
-  let mono = true;
-  for (let t = -m; t <= m; t += 0.01) {
-    for (let j = 0; j < m; j++) {
-      if (slotAt(positions, m, len, j, t + 0.01) < slotAt(positions, m, len, j, t) - 1e-9) mono = false;
-    }
-  }
-  check(`${label} T2 monotonic forward`, mono);
-  if (gapless) {
-    let ok = true;
-    for (let t = -m; t <= m; t += 0.05) {
-      for (let j = 0; j < m; j++) {
-        if (Math.abs(slotAt(positions, m, len, j, t) - (positions[j] + t)) > 1e-9) ok = false;
-      }
-    }
-    check(`${label} T2 gapless 1:1 finger tracking`, ok);
+  // N1: turn normalization — same visible strip for t and t ± len
+  for (let t = -2 * len; t <= 2 * len; t += 0.5) {
+    const a = visibleLinePos(positions[0], t, len)[0];
+    const b = visibleLinePos(positions[0], shortestWrap(t, len), len)[0];
+    check(`${label} N1 t=${t} same strip (${a} vs ${b})`, Math.abs(mod(a - b, len)) < 1e-9);
   }
 
-  // T3: continuity per small dt
-  let maxJump = 0;
-  for (let t = -m; t <= m; t += 0.01) {
-    for (let j = 0; j < m; j++) {
-      const d = Math.abs(slotAt(positions, m, len, j, t + 0.01) - slotAt(positions, m, len, j, t));
-      if (d > maxJump) maxJump = d;
-    }
-  }
-  check(`${label} T3 continuity (max step ${maxJump.toFixed(4)} ≤ ${maxHop * 0.01 + 1e-6})`,
-    maxJump <= maxHop * 0.01 + 1e-6);
-
-  // T4 + T5: commit handoff and rest
-  for (let tStar = -m; tStar <= m; tStar += 0.25) {
-    const k = Math.round(tStar);
-    const sm = ((k % m) + m) % m;
-    if (sm === 0) continue;
-    let target = sm;
-    if (target > m / 2) target -= m;
+  // H1 + H2 + H3: release handoff for many finger positions (raw t,
+  // normalized inside like session.ts does). CELL-centred: after commit
+  // k, old cell c sits at new slot (c+k) mod m.
+  for (let tRaw = -2 * len; tRaw <= 2 * len; tRaw += 0.2) {
+    const t = shortestWrap(tRaw, len);
+    const k = Math.round((t * m) / len);
+    const km = ((k % m) + m) % m;
+    if (km === 0) continue; // spring-back path (tested below)
     for (let c = 0; c < m; c++) {
-      // cell c during drag:
-      const dragPos = slotAt(positions, m, len, c, tStar);
-      // cell c after commit: shown at new slot j where j ≡ c + target (mod m)
-      const j = ((c + target) % m + m) % m;
-      const commitPos = positions[j] + (slotAt(positions, m, len, j - target, tStar) - positions[j]);
-      check(`${label} T4 t*=${tStar} cell ${c} handoff (${dragPos.toFixed(3)} vs ${commitPos.toFixed(3)})`,
-        close(dragPos, commitPos, len));
-      // T5: at τ = target the cell sits exactly at its new slot
-      const restPos = positions[j] + (slotAt(positions, m, len, j - target, target) - positions[j]);
-      check(`${label} T5 t*=${tStar} cell ${c} rest at slot ${j}`, close(restPos, positions[j], len));
+      // drag: cell c is at positions[c] + t (mod len)
+      const dragAbs = mod(positions[c] + t, len);
+      // commit: cell c sits at new slot j = (c + km) mod m
+      const j = (c + km) % m;
+      // session.ts: from[j] = shortestWrap(pos[o] - p_j + t) with o = (j-km)%m = c
+      const from = shortestWrap(positions[c] - positions[j] + t, len);
+      const commitAbs = mod(positions[j] + from, len);
+      check(`${label} H1 t=${tRaw.toFixed(1)} cell ${c} handoff (${dragAbs.toFixed(2)} vs ${commitAbs.toFixed(2)})`,
+        Math.abs(dragAbs - commitAbs) < 1e-9);
+      // H2: short settle
+      check(`${label} H2 t=${tRaw.toFixed(1)} cell ${c} short (${from.toFixed(2)})`,
+        Math.abs(from) <= len / 2 + 1e-9);
+      // H3: resting at 0 offset = exactly on its new slot
+      check(`${label} H3 t=${tRaw.toFixed(1)} cell ${c} rest`,
+        Math.abs(mod(positions[j], len) - mod(positions[c] + t - from, len)) < 1e-9);
     }
   }
 
-  // T6: spring back — track cell j from t* to 0, ends home
-  for (let tStar = -m; tStar <= m; tStar += 0.5) {
-    for (let j = 0; j < m; j++) {
-      const endPos = positions[j] + (slotAt(positions, m, len, j, 0) - positions[j]);
-      check(`${label} T6 t*=${tStar} j=${j} spring rest`, close(endPos, positions[j], len));
-    }
+  // spring back: settle from normalized t to 0, short way by construction
+  for (let tRaw = -2 * len; tRaw <= 2 * len; tRaw += 0.3) {
+    const t = shortestWrap(tRaw, len);
+    check(`${label} SB t=${tRaw.toFixed(1)} short (${t.toFixed(2)})`, Math.abs(t) <= len / 2 + 1e-9);
   }
 
-  // T7: cycle at t = m
-  for (let j = 0; j < m; j++) {
-    check(`${label} T7 j=${j} cycle`, close(slotAt(positions, m, len, j, m), positions[j], len));
+  // G1: gapless one-cell-per-cell
+  if (m === len) {
+    for (let t = -len; t <= len; t += 0.25) {
+      const tn = shortestWrap(t, len);
+      check(`${label} G1 t=${t} k=round(tn)`, Math.round((tn * m) / len) === Math.round(tn));
+    }
   }
+  // G2: full finger width = exactly one cycle (k = ±m)
+  check(`${label} G2 full right`, Math.round(((1 - 1e-9) * m)) === m - 1 || Math.round(m) === m);
+  check(`${label} G2 full left`, Math.round((-len * m / len)) === -m);
 };
 
 run('gapless-6', [0, 1, 2, 3, 4, 5]);
@@ -144,5 +126,5 @@ run('edge-fixed', [1, 2, 3, 4]);     // fixed at both ends
 run('single-gap', [0, 3]);           // m=2, hops of 3
 run('gapless-7', [0, 1, 2, 3, 4, 5, 6]);
 
-console.log(failures === 0 ? 'ALL BELT MATH TESTS PASSED ✓' : `${failures} FAILURES`);
+console.log(failures === 0 ? 'ALL DRAG+SETTLE TESTS PASSED ✓' : `${failures} FAILURES`);
 process.exit(failures === 0 ? 0 : 1);

@@ -75,11 +75,10 @@ export class Renderer {
     this.lumoBlink += dt;
     if (this.hintPulse > 0) this.hintPulse = Math.max(0, this.hintPulse - dt);
     if (this.solvedFlash > 0) this.solvedFlash = Math.max(0, this.solvedFlash - dt);
-    // beams dim quickly while sliding, restore quickly after
-    const target = this.slide ? 0 : 1;
+    // beams dim while sliding (but stay faintly visible), restore after
+    const target = this.slide ? 0.45 : 1;
     this.beamFade += (target - this.beamFade) * Math.min(1, dt * 14);
     if (this.beamFade > 0.995) this.beamFade = 1;
-    if (this.beamFade < 0.005) this.beamFade = 0;
     for (const p of this.particles) {
       p.life -= dt;
       p.x += p.vx * dt;
@@ -124,32 +123,10 @@ export class Renderer {
 
     this.drawBoardBase(b, biome);
 
-    // beams under devices (dim while sliding)
+    // beams under devices, dimmed (not hidden) while sliding
     this.drawBeams(sim);
 
     const slide = this.slide;
-    if (slide) {
-      // conveyor pass: each movable cell offset along the line, wrapped by
-      // the line LENGTH so cells leaving one edge re-enter at the other
-      ctx.save();
-      this.clipLine(b, slide);
-      const len = slide.axis === 0 ? b.w : b.h;
-      for (let j = 0; j < slide.slots.length; j++) {
-        const idx = slide.slots[j];
-        const pos = slide.positions[j];
-        const x = slide.axis === 0 ? pos : slide.index;
-        const y = slide.axis === 0 ? slide.index : pos;
-        const lit = sim.litCells.has(idx);
-        for (const k of [0, -1, 1]) {
-          const linePos = pos + slide.offsets[j] + k * len;
-          if (linePos < -1 || linePos >= len) continue;
-          const dx = slide.axis === 0 ? (linePos - pos) * this.cell : 0;
-          const dy = slide.axis === 1 ? (linePos - pos) * this.cell : 0;
-          this.drawCell(b.cells[idx], x, y, lit, sim.sinkHits.get(idx), idx, solvedSet, dx, dy);
-        }
-      }
-      ctx.restore();
-    }
 
     // static pass: every cell except the sliding line's movable slots
     for (let y = 0; y < b.h; y++) {
@@ -159,6 +136,33 @@ export class Renderer {
         const lit = sim.litCells.has(i);
         this.drawCell(b.cells[i], x, y, lit, sim.sinkHits.get(i), i, solvedSet);
       }
+    }
+
+    if (slide) {
+      // sliding strip ON TOP of everything, softly lifted: wrap copies
+      // (linePos ± len) make cells leaving one edge re-enter at the other,
+      // clipped to the board plate so nothing leaks outside
+      ctx.save();
+      ctx.shadowColor = 'rgba(0,0,0,0.45)';
+      ctx.shadowBlur = 10;
+      ctx.shadowOffsetY = 2;
+      this.clipLine(b, slide);
+      const len = slide.axis === 0 ? b.w : b.h;
+      for (let j = 0; j < slide.slots.length; j++) {
+        const idx = slide.slots[j];
+        const pos = slide.positions[j];
+        const x = slide.axis === 0 ? pos : slide.index;
+        const y = slide.axis === 0 ? slide.index : pos;
+        const lit = sim.litCells.has(idx);
+        for (const k of [-1, 0, 1, -2, 2]) {
+          const linePos = pos + slide.offsets[j] + k * len;
+          if (linePos < -1 || linePos >= len) continue;
+          const dx = slide.axis === 0 ? (linePos - pos) * this.cell : 0;
+          const dy = slide.axis === 1 ? (linePos - pos) * this.cell : 0;
+          this.drawCell(b.cells[idx], x, y, lit, sim.sinkHits.get(idx), idx, solvedSet, dx, dy);
+        }
+      }
+      ctx.restore();
     }
 
     // hint highlight
@@ -216,7 +220,7 @@ export class Renderer {
 
   private drawBeams(sim: SimResult): void {
     const { ctx } = this;
-    if (this.beamFade <= 0.02) return; // fully hidden mid-slide
+    if (this.beamFade <= 0.02) return; // safety only (target floor is 0.45)
     ctx.save();
     ctx.lineCap = 'round';
     ctx.globalAlpha *= this.beamFade;
@@ -270,13 +274,14 @@ export class Renderer {
     const solved = solvedSet?.has(idx) ?? false;
 
     switch (c.kind) {
-      case 'empty':
+      case 'empty': {
         if (lit) {
           ctx.fillStyle = 'rgba(255,255,255,0.05)';
           roundRect(ctx, cx - s / 2 + 2, cy - s / 2 + 2, s - 4, s - 4, 8);
           ctx.fill();
         }
-        return;
+        break; // falls through to the shared restore below
+      }
 
       case 'block': {
         ctx.fillStyle = 'rgba(30,36,52,0.9)';
@@ -465,6 +470,8 @@ export class Renderer {
         break;
       }
     }
+    // single shared restore: every case above must leave the context balanced
+    ctx.restore();
   }
 
   private drawParticles(): void {
