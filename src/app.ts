@@ -304,6 +304,8 @@ function onPointerMove(e: PointerEvent): void {
   drag.dist = dist;
   // live conveyor preview follows the finger
   session.dragTo(drag.axis, drag.lineIndex, dist);
+  // v1.6: sparkle trail behind the moving finger
+  renderer.trailSpark(px, py, '#bfe9ff');
 }
 
 function onPointerUp(e: PointerEvent): void {
