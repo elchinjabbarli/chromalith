@@ -124,6 +124,8 @@ export class Session {
       const { cx, cy } = r.cellCenter(x, y);
       const c = this.board.cells[i];
       // v1.4: ring + burst + sparkle dust per solved crystal
+      // v1.5: springy pop on the crystal itself
+      r.popSink(i);
       r.burst(cx, cy, cellGlowColor(c.color), 20, 130);
       r.ring(cx, cy, this.board ? r.cell * 1.5 : 60, cellGlowColor(c.color), 3);
     }

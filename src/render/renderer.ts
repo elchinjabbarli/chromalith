@@ -2,13 +2,23 @@
  * Canvas renderer — draws the board, devices, beams, particles and Lumo.
  * Everything is drawn procedurally (no image assets).
  *
- * v1.4 "Radiance" upgrade:
+ * v1.4 "Radiance":
  *  - three-pass beams (wide bloom + color body + white-hot core) with
  *    flowing energy dashes and endpoint star glints
  *  - faceted gems with specular highlights, solved crystals that beam light
  *    upward (pillar) and pop with shockwave rings
  *  - parallax starfield + drifting nebula behind the board, biome-tinted
  *  - quality tier auto-degrades on slow devices (particle caps, star count)
+ *
+ * v1.5 "Aurora":
+ *  - real bloom: an offscreen canvas collects glow sources (beams, crystals,
+ *    sources), gets blurred and composited with 'lighter' for HDR feel
+ *  - ambient biome motes (fireflies / snow / spores / bubbles ...) drifting
+ *    with individual twinkle phases
+ *  - ground glow: a soft colored pool of light under each beam
+ *  - board reveal: cells cascade in from below with a light-sweep on start
+ *  - sink pop: solved crystals do a springy scale pop
+ *  - vignette: subtle darkened edges, focuses the eye on the board
  */
 
 import { Board, Cell, Color, COLOR_HEX } from '../core/grid';
@@ -48,14 +58,49 @@ export interface Ring {
   life: number; maxLife: number; color: string; width: number;
 }
 
-/** v1.4: quality tier, degrades automatically when FPS is low. */
+/** v1.5: quality tier, degrades automatically when FPS is low. */
 export type Quality = 'high' | 'medium' | 'low';
 
 interface Star {
   x: number; y: number; z: number; tw: number; size: number;
 }
 
+/** v1.5: ambient biome mote (firefly / snowflake / spore / bubble). */
+interface Mote {
+  x: number; y: number; r: number;
+  /** velocity px/s (motes drift gently) */
+  vx: number; vy: number;
+  /** twinkle phase + speed */
+  tw: number; tws: number;
+  /** sway phase for sinusoidal wobble */
+  sway: number;
+  color: string;
+}
+
+/** v1.5: mote flavor per biome — colors, drift direction, size range. */
+interface MoteFlavor {
+  colors: string[];
+  vx: number; vy: number;      // base drift px/s
+  rMin: number; rMax: number;
+}
+
+const MOTE_FLAVOR: Record<string, MoteFlavor> = {
+  dawnshore:   { colors: ['#ffe9b0', '#ffd27e'], vx: 6, vy: -4,  rMin: 1.2, rMax: 2.6 }, // fireflies
+  embergrove:  { colors: ['#ffb37e', '#ff8a5c'], vx: 5, vy: -7,  rMin: 1.0, rMax: 2.2 }, // rising embers
+  tidecavern:  { colors: ['#9ff0e2', '#5cd6c4'], vx: 3, vy: -9,  rMin: 1.4, rMax: 3.4 }, // bubbles
+  fungalight:  { colors: ['#d8bcff', '#b78bff'], vx: 8, vy: -3,  rMin: 1.2, rMax: 2.8 }, // drifting spores
+  frostreach:  { colors: ['#eaf6ff', '#c4e2ff'], vx: 4, vy: 10,  rMin: 1.0, rMax: 2.4 }, // falling snow
+  duskspire:   { colors: ['#ffc4dd', '#ff9fc7'], vx: 6, vy: -5,  rMin: 1.2, rMax: 2.6 }, // petals
+  voidmere:    { colors: ['#aab8ff', '#8f9ff8'], vx: 2, vy: -6,  rMin: 1.0, rMax: 2.2 }, // slow dust
+  starfall:    { colors: ['#ffe08a', '#ffd23f'], vx: -5, vy: 14,  rMin: 1.0, rMax: 2.4 }, // falling stardust
+  prismdepths: { colors: ['#7df0e4', '#2ee6d6'], vx: 3, vy: -8,  rMin: 1.4, rMax: 3.0 }, // plankton
+  luminary:    { colors: ['#fff2c0', '#ffe08a'], vx: 5, vy: -6,  rMin: 1.2, rMax: 2.8 }, // golden motes
+  default:     { colors: ['#dfe8ff'],              vx: 4, vy: -5,  rMin: 1.2, rMax: 2.6 },
+};
+
 const MAX_PARTICLES = 220;
+/** mote counts per quality tier */
+const MOTE_COUNTS: Record<Quality, number> = { high: 22, medium: 14, low: 0 };
 
 export class Renderer {
   ctx: CanvasRenderingContext2D;
@@ -83,6 +128,39 @@ export class Renderer {
   private stars: Star[] = [];
   private starBiome = '';
   private lumoBlink = 0;
+  /** v1.5: ambient biome motes + their biome key (rebuilt on change) */
+  private motes: Mote[] = [];
+  private moteBiome = '';
+  /** v1.5: board reveal animation (0→1, started by revealBoard()) */
+  reveal = 1;
+  /** v1.5: last reveal start time (for stagger easing) */
+  private revealT0 = -99;
+  /** v1.5: per-cell pop animation for solved sinks: cellIdx → start time */
+  private pops = new Map<number, number>();
+  /** v1.5: bloom offscreen canvas (created lazily, reused) */
+  private glowCanvas: HTMLCanvasElement | null = null;
+  private glowCtx: CanvasRenderingContext2D | null = null;
+  /** v1.5: cached vignette (rebuilt only when the canvas size changes) */
+  private vignetteCanvas: HTMLCanvasElement | null = null;
+  private vignetteW = 0;
+  private vignetteH = 0;
+
+  /** (Re)build the cached vignette layer for the current size. */
+  private ensureVignette(W: number, H: number): void {
+    if (this.vignetteCanvas && this.vignetteW === W && this.vignetteH === H) return;
+    this.vignetteW = W;
+    this.vignetteH = H;
+    const c = this.vignetteCanvas ?? document.createElement('canvas');
+    c.width = Math.max(1, Math.round(W));
+    c.height = Math.max(1, Math.round(H));
+    const g = c.getContext('2d')!;
+    const vg = g.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.35, W / 2, H / 2, Math.max(W, H) * 0.72);
+    vg.addColorStop(0, 'rgba(0,0,0,0)');
+    vg.addColorStop(1, 'rgba(2,4,10,0.42)');
+    g.fillStyle = vg;
+    g.fillRect(0, 0, W, H);
+    this.vignetteCanvas = c;
+  }
   /** v1.4: quality tier + rolling FPS average */
   quality: Quality = 'high';
   private fpsAvg = 60;
@@ -148,6 +226,16 @@ export class Renderer {
       f.y -= 26 * dt;
     }
     this.floats = this.floats.filter(f => f.life > 0);
+    // v1.5: reveal progress + ambient mote drift
+    if (this.reveal < 1) this.reveal = Math.min(1, this.reveal + dt * 1.4);
+    for (const m of this.motes) {
+      m.x += (m.vx + Math.sin(this.time * 0.7 + m.sway) * 6) * dt;
+      m.y += m.vy * dt;
+      if (m.y < -20) m.y = this.vh + 20;
+      if (m.y > this.vh + 20) m.y = -20;
+      if (m.x < -20) m.x = this.vw + 20;
+      if (m.x > this.vw + 20) m.x = -20;
+    }
     // quality monitor: sustained <45fps degrades, >55fps for long recovers
     const fps = dt > 0 ? 1 / dt : 60;
     this.fpsAvg += (fps - this.fpsAvg) * 0.04;
@@ -208,6 +296,47 @@ export class Renderer {
     }
   }
 
+  /** v1.5: restart the cascade-in reveal of the board (level start / restart). */
+  revealBoard(): void {
+    this.reveal = 0;
+    this.revealT0 = this.time;
+  }
+
+  /** v1.5: springy pop for a just-solved sink cell. */
+  popSink(idx: number): void {
+    this.pops.set(idx, this.time);
+    if (this.pops.size > 12) {
+      // keep the map small — only recent pops matter
+      const cutoff = this.time - 0.8;
+      for (const [k, t0] of this.pops) if (t0 < cutoff) this.pops.delete(k);
+    }
+  }
+
+  /** v1.5: per-cell reveal progress (0 = hidden below, 1 = in place). */
+  private cellReveal(x: number, y: number, b: Board): number {
+    if (this.reveal >= 1) return 1;
+    // diagonal cascade: delay grows with distance from top-left
+    const delay = ((x + y) / (b.w + b.h)) * 0.45;
+    const t = (this.time - this.revealT0 - delay) / 0.5;
+    if (t <= 0) return 0;
+    if (t >= 1) return 1;
+    // ease-out-back for a springy landing
+    const c1 = 1.70158;
+    const c3 = c1 + 1;
+    return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+  }
+
+  /** v1.5: spring scale for a recently solved sink. */
+  private sinkPopScale(idx: number): number {
+    const t0 = this.pops.get(idx);
+    if (t0 === undefined) return 1;
+    const t = (this.time - t0) / 0.5;
+    if (t >= 1) { this.pops.delete(idx); return 1; }
+    if (t <= 0) return 1;
+    // damped spring: overshoot then settle
+    return 1 + 0.35 * Math.sin(t * Math.PI * 2.2) * Math.exp(-t * 4.5);
+  }
+
   float(cx: number, cy: number, text: string, color = '#fff'): void {
     this.floats.push({ x: cx, y: cy, text, life: 1.1, color });
   }
@@ -224,10 +353,16 @@ export class Renderer {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, W, H);
 
+    // v1.5: offscreen glow layer for real bloom — glow sources (beams,
+    // crystals, sources) are ALSO painted here, then blurred and composited
+    // additively at the end of draw()
+    const glow = this.beginGlow(dpr, W, H);
+
     // screen shake — decaying random offset applied to everything below
     const sh = this.shake;
     if (sh > 0.1) {
       ctx.translate((Math.random() - 0.5) * sh, (Math.random() - 0.5) * sh);
+      if (glow) glow.translate((Math.random() - 0.5) * sh, (Math.random() - 0.5) * sh);
     }
 
     this.drawBackdrop(b, biome);
@@ -244,7 +379,9 @@ export class Renderer {
         const i = y * b.w + x;
         if (slide && slide.skip.has(i)) continue;
         const lit = sim.litCells.has(i);
-        this.drawCell(b.cells[i], x, y, lit, sim.sinkHits.get(i), i, solvedSet);
+        const rv = this.cellReveal(x, y, b);
+        if (rv <= 0) continue; // not yet arrived during reveal
+        this.drawCell(b.cells[i], x, y, lit, sim.sinkHits.get(i), i, solvedSet, 0, 0, rv);
       }
     }
 
@@ -269,7 +406,7 @@ export class Renderer {
           if (linePos < -1 || linePos >= len) continue;
           const dx = slide.axis === 0 ? (linePos - pos) * this.cell : 0;
           const dy = slide.axis === 1 ? (linePos - pos) * this.cell : 0;
-          this.drawCell(b.cells[idx], x, y, lit, sim.sinkHits.get(idx), idx, solvedSet, dx, dy);
+          this.drawCell(b.cells[idx], x, y, lit, sim.sinkHits.get(idx), idx, solvedSet, dx, dy, 1);
         }
       }
       ctx.restore();
@@ -290,6 +427,16 @@ export class Renderer {
     this.drawRings();
     this.drawParticles();
 
+    // v1.5: composite the blurred glow layer additively (real bloom)
+    this.endGlow(ctx, dpr);
+
+    // v1.5: vignette — darken the edges, keep focus on the board.
+    // Pre-rendered once per resize (see ensureVignette), blitted per frame.
+    this.ensureVignette(W, H);
+    if (this.vignetteCanvas) {
+      ctx.drawImage(this.vignetteCanvas, 0, 0, W, H);
+    }
+
     // full-board win flash overlay
     if (this.winFlash > 0.01) {
       ctx.globalAlpha = 0.32 * this.winFlash;
@@ -297,6 +444,57 @@ export class Renderer {
       ctx.fillRect(-20, -20, W + 40, H + 40);
       ctx.globalAlpha = 1;
     }
+  }
+
+  /* -------------------------------------------------------------- */
+  /* v1.5: bloom glow layer                                          */
+
+  /** Prepare (or reuse) the offscreen glow canvas; returns null on low quality. */
+  private beginGlow(dpr: number, W: number, H: number): CanvasRenderingContext2D | null {
+    if (this.quality === 'low') return null;
+    if (!this.glowCanvas) {
+      this.glowCanvas = document.createElement('canvas');
+      this.glowCtx = this.glowCanvas.getContext('2d');
+    }
+    if (!this.glowCanvas || !this.glowCtx) return null;
+    // glow at quarter resolution — it only ever renders soft blobs and
+    // thick beam strokes; quarter res is invisible after compositing and
+    // 4x cheaper to blur/scale
+    const gw = Math.max(1, Math.round(W / 4));
+    const gh = Math.max(1, Math.round(H / 4));
+    if (this.glowCanvas.width !== gw || this.glowCanvas.height !== gh) {
+      this.glowCanvas.width = gw;
+      this.glowCanvas.height = gh;
+    }
+    this.glowCtx.setTransform(0.25 * dpr, 0, 0, 0.25 * dpr, 0, 0);
+    this.glowCtx.clearRect(0, 0, W, H);
+    return this.glowCtx;
+  }
+
+  /** Additive-composite the glow layer onto the main canvas (real bloom).
+   *  Single draw pass — the layer already contains soft radial falloffs, so
+   *  no second halo pass or canvas filter is needed. */
+  private endGlow(ctx: CanvasRenderingContext2D, dpr: number): void {
+    if (!this.glowCanvas || !this.glowCtx || this.quality === 'low') return;
+    ctx.save();
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = 0.5;
+    ctx.drawImage(this.glowCanvas, 0, 0, this.vw, this.vh);
+    ctx.restore();
+  }
+
+  /** v1.5: paint a soft radial blob into the glow layer (world coords, CSS px). */
+  private glowBlob(x: number, y: number, r: number, color: string, alpha = 0.5): void {
+    const g = this.glowCtx;
+    if (!g) return;
+    const grad = g.createRadialGradient(x, y, 0, x, y, r);
+    grad.addColorStop(0, hexA(color, alpha));
+    grad.addColorStop(1, hexA(color, 0));
+    g.fillStyle = grad;
+    g.beginPath();
+    g.arc(x, y, r, 0, Math.PI * 2);
+    g.fill();
   }
 
   /* -------------------------------------------------------------- */
@@ -322,6 +520,7 @@ export class Renderer {
   private drawBackdrop(b: Board, biome: Biome): void {
     const { ctx } = this;
     this.ensureStars(biome);
+    this.ensureMotes(biome);
 
     // soft radial glow behind the board, biome-tinted
     const cx = this.ox + (b.w * this.cell) / 2;
@@ -346,6 +545,54 @@ export class Renderer {
       ctx.fill();
     }
     ctx.globalAlpha = 1;
+
+    // v1.5: ambient biome motes (fireflies / snow / spores ...) — soft
+    // twinkling dots with sinusoidal sway. Batched per color into a single
+    // path (fill calls dominate when done per-mote).
+    if (this.motes.length) {
+      const groups = new Map<string, { x: number; y: number; r: number; a: number }[]>();
+      for (const m of this.motes) {
+        const tw = 0.5 + 0.5 * Math.sin(this.time * m.tws + m.tw);
+        let arr = groups.get(m.color);
+        if (!arr) groups.set(m.color, arr = []);
+        arr.push({ x: m.x, y: m.y, r: m.r, a: 0.18 + 0.5 * tw });
+      }
+      for (const [color, list] of groups) {
+        ctx.fillStyle = color;
+        for (const q of list) {
+          ctx.globalAlpha = q.a;
+          ctx.beginPath();
+          ctx.arc(q.x, q.y, q.r, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  /** v1.5: (re)build the ambient mote field for the current biome + quality. */
+  private ensureMotes(biome: Biome): void {
+    const key = biome.key + '@' + this.quality;
+    if (this.moteBiome === key) return;
+    this.moteBiome = key;
+    const n = MOTE_COUNTS[this.quality];
+    this.motes = [];
+    if (!n) return;
+    // per-biome flavor: color + drift direction + size range
+    const flavor = MOTE_FLAVOR[biome.key] ?? MOTE_FLAVOR.default;
+    for (let i = 0; i < n; i++) {
+      this.motes.push({
+        x: Math.random() * this.vw,
+        y: Math.random() * this.vh,
+        r: flavor.rMin + Math.random() * (flavor.rMax - flavor.rMin),
+        vx: flavor.vx * (0.6 + Math.random() * 0.8),
+        vy: flavor.vy * (0.6 + Math.random() * 0.8),
+        tw: Math.random() * Math.PI * 2,
+        tws: 0.6 + Math.random() * 1.6,
+        sway: Math.random() * Math.PI * 2,
+        color: flavor.colors[Math.floor(Math.random() * flavor.colors.length)],
+      });
+    }
   }
 
   /** Clip to the board plate so sliding cells never leak outside it. */
@@ -417,6 +664,43 @@ export class Renderer {
       const y1 = py(sp.y1);
       const x2 = px(sp.x2);
       const y2 = py(sp.y2);
+
+      // v1.5: ground glow — soft pool of light bleeding onto the plate
+      // under the beam (drawn on the MAIN canvas, under devices).
+      // Radial gradient instead of a canvas blur filter: same soft look,
+      // a fraction of the cost (blur per shape per frame is very slow).
+      if (this.quality === 'high') {
+        const mx = (x1 + x2) / 2;
+        const my = (y1 + y2) / 2;
+        const horiz = Math.abs(x2 - x1) > Math.abs(y2 - y1);
+        const gw = (horiz ? Math.abs(x2 - x1) * 0.7 : this.cell * 0.9) / 2;
+        const gh = (horiz ? this.cell * 0.9 : Math.abs(y2 - y1) * 0.7) / 2;
+        ctx.save();
+        ctx.translate(mx, my);
+        ctx.scale(1, gh / gw);
+        const gg = ctx.createRadialGradient(0, 0, 0, 0, 0, gw);
+        gg.addColorStop(0, hexA(color, 0.16 * this.beamFade));
+        gg.addColorStop(1, hexA(color, 0));
+        ctx.fillStyle = gg;
+        ctx.beginPath();
+        ctx.arc(0, 0, gw, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      // v1.5: bloom source — paint the beam into the glow layer too
+      if (this.glowCtx) {
+        this.glowCtx.save();
+        this.glowCtx.globalAlpha = 0.5 * this.beamFade;
+        this.glowCtx.strokeStyle = color;
+        this.glowCtx.lineWidth = Math.max(4, this.cell * 0.14);
+        this.glowCtx.lineCap = 'round';
+        this.glowCtx.beginPath();
+        this.glowCtx.moveTo(x1, y1);
+        this.glowCtx.lineTo(x2, y2);
+        this.glowCtx.stroke();
+        this.glowCtx.restore();
+      }
 
       // pass 1: wide bloom
       ctx.globalAlpha = 0.22 * this.beamFade;
@@ -494,12 +778,19 @@ export class Renderer {
 
   private drawCell(
     c: Cell, x: number, y: number, lit: boolean, hit: Color | undefined,
-    idx: number, solvedSet?: Set<number>, dx = 0, dy = 0,
+    idx: number, solvedSet?: Set<number>, dx = 0, dy = 0, reveal = 1,
   ): void {
     const { ctx } = this;
     const { cx, cy } = this.cellCenter(x, y);
     ctx.save();
     if (dx || dy) ctx.translate(dx, dy);
+    // v1.5: reveal cascade — slide in from below with springy landing
+    if (reveal < 1) {
+      const t = 1 - reveal;
+      ctx.translate(0, t * t * this.cell * 3);
+      ctx.globalAlpha = Math.min(1, reveal * 2);
+      ctx.scale(0.9 + reveal * 0.1, 0.9 + reveal * 0.1);
+    }
     const s = this.cell;
     const solved = solvedSet?.has(idx) ?? false;
 
@@ -675,10 +966,17 @@ export class Renderer {
         const exact = got === want;
         const colW = COLOR_HEX[want] ?? '#fff';
         const colG = COLOR_HEX[got] ?? '#333';
-        const pulse = exact ? 1 + 0.06 * Math.sin(this.time * 5 + idx) : 1;
+        // v1.5: pop spring multiplied with the idle pulse
+        const pulse = (exact ? 1 + 0.06 * Math.sin(this.time * 5 + idx) : 1)
+          * this.sinkPopScale(idx);
         ctx.save();
         ctx.translate(cx, cy);
         ctx.scale(pulse, pulse);
+
+        // v1.5: bloom blob under an exact crystal
+        if (exact && this.glowCtx) {
+          this.glowBlob(cx, cy, s * 0.7, colW, 0.55);
+        }
 
         // solved: light pillar beaming upward + halo
         if (exact && this.quality !== 'low') {
@@ -773,6 +1071,8 @@ export class Renderer {
 
       case 'source': {
         const col = COLOR_HEX[c.color] ?? '#fff';
+        // v1.5: bloom blob under the emitter
+        if (this.glowCtx) this.glowBlob(cx, cy, s * 0.8, col, 0.45);
         ctx.save();
         ctx.translate(cx, cy);
         // housing with gradient

@@ -169,6 +169,7 @@ function startLevel(n: number): void {
   requestAnimationFrame(() => {
     layoutCanvas();
     session?.renderer.layout(board, window.devicePixelRatio || 1);
+    session?.renderer.revealBoard(); // v1.5: cascade-in on every level start
   });
 }
 
@@ -237,6 +238,7 @@ async function onLevelWon(n: number, moves: number, par: number): Promise<void> 
       sfx.star(i);
     }, 350 * i);
   }
+  spawnConfetti(stars); // v1.5: canvas confetti behind the win panel
   renderMainMenu();
 }
 
@@ -259,6 +261,9 @@ const drag: DragState = {
 };
 
 function onPointerDown(e: PointerEvent): void {
+  // v1.5: soft ripple wherever the player touches the board
+  const rect0 = canvas.getBoundingClientRect();
+  touchWaveAt(e.clientX - rect0.left, e.clientY - rect0.top);
   if (!session || session.won) return;
   if (drag.active) return; // second finger while dragging: ignore
   const rect = canvas.getBoundingClientRect();
@@ -567,6 +572,109 @@ async function onSolve(): Promise<void> {
 }
 
 /* ------------------------------------------------------------------ */
+/* v1.5: FX layer — win confetti + touch waves                          */
+
+interface ConfettiPiece {
+  x: number; y: number; vx: number; vy: number;
+  rot: number; vrot: number;
+  w: number; h: number;
+  color: string;
+  life: number; maxLife: number;
+  sway: number;
+}
+
+interface TouchWave {
+  x: number; y: number; r: number; life: number;
+}
+
+const FX_COLORS = ['#ff5566', '#ffd23f', '#2ee6d6', '#4d9dff', '#b78bff', '#ffe9a8'];
+let fxCanvas: HTMLCanvasElement | null = null;
+let fxCtx: CanvasRenderingContext2D | null = null;
+let confetti: ConfettiPiece[] = [];
+let touchWaves: TouchWave[] = [];
+
+function layoutFx(): void {
+  if (!fxCanvas) return;
+  const dpr = window.devicePixelRatio || 1;
+  const r = fxCanvas.getBoundingClientRect();
+  fxCanvas.width = Math.round(r.width * dpr);
+  fxCanvas.height = Math.round(r.height * dpr);
+  fxCtx?.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+function spawnConfetti(stars: number): void {
+  if (!fxCtx || !fxCanvas) return;
+  // more stars -> more confetti; 3-star wins feel like a parade
+  const n = 40 + stars * 22;
+  const W = fxCanvas.clientWidth;
+  for (let i = 0; i < n; i++) {
+    confetti.push({
+      x: Math.random() * W,
+      y: -20 - Math.random() * 140,
+      vx: (Math.random() - 0.5) * 60,
+      vy: 120 + Math.random() * 160,
+      rot: Math.random() * Math.PI * 2,
+      vrot: (Math.random() - 0.5) * 9,
+      w: 6 + Math.random() * 6,
+      h: 9 + Math.random() * 8,
+      color: FX_COLORS[Math.floor(Math.random() * FX_COLORS.length)],
+      life: 2.6 + Math.random() * 1.2,
+      maxLife: 3.8,
+      sway: Math.random() * Math.PI * 2,
+    });
+  }
+  if (confetti.length > 260) confetti.splice(0, confetti.length - 260);
+}
+
+function touchWaveAt(x: number, y: number): void {
+  if (!fxCtx) return;
+  touchWaves.push({ x, y, r: 8, life: 0.5 });
+}
+
+function stepFx(dt: number): void {
+  const g = fxCtx;
+  if (!g || !fxCanvas) return;
+  const W = fxCanvas.clientWidth;
+  const H = fxCanvas.clientHeight;
+  g.clearRect(0, 0, W, H);
+
+  // confetti
+  for (const c of confetti) {
+    c.life -= dt;
+    c.x += (c.vx + Math.sin(c.sway + c.life * 3) * 34) * dt;
+    c.y += c.vy * dt;
+    c.rot += c.vrot * dt;
+  }
+  confetti = confetti.filter(c => c.life > 0 && c.y < H + 30);
+  for (const c of confetti) {
+    g.save();
+    g.translate(c.x, c.y);
+    g.rotate(c.rot);
+    g.globalAlpha = Math.min(1, c.life / 0.7);
+    g.fillStyle = c.color;
+    g.fillRect(-c.w / 2, -c.h / 2, c.w, c.h * (0.55 + 0.45 * Math.abs(Math.sin(c.rot * 1.7))));
+    g.restore();
+  }
+
+  // touch waves
+  for (const w of touchWaves) {
+    w.life -= dt;
+    w.r += 240 * dt;
+  }
+  touchWaves = touchWaves.filter(w => w.life > 0);
+  for (const w of touchWaves) {
+    const k = w.life / 0.5;
+    g.globalAlpha = k * 0.35;
+    g.strokeStyle = 'rgba(255,255,255,0.9)';
+    g.lineWidth = 2 + k * 2;
+    g.beginPath();
+    g.arc(w.x, w.y, w.r, 0, Math.PI * 2);
+    g.stroke();
+  }
+  g.globalAlpha = 1;
+}
+
+/* ------------------------------------------------------------------ */
 /* game loop                                                           */
 
 function layoutCanvas(): void {
@@ -579,12 +687,14 @@ function layoutCanvas(): void {
   canvas.style.width = r.width + 'px';
   canvas.style.height = r.height + 'px';
   if (session) renderer.layout(session.board, dpr);
+  layoutFx(); // v1.5
 }
 
 function loop(now: number): void {
   const dt = Math.min(0.05, (now - lastT) / 1000);
   lastT = now;
   renderer.step(dt);
+  stepFx(dt); // v1.5: confetti + touch waves
   if (session && $('screen-game').classList.contains('active')) {
     const sim = session.sim;
     renderer.draw(session.board, sim, session.biome, session.solvedSet);
@@ -612,6 +722,8 @@ async function boot(): Promise<void> {
 
   canvas = $('game-canvas') as HTMLCanvasElement;
   renderer = new Renderer(canvas);
+  fxCanvas = $('fx-canvas') as HTMLCanvasElement; // v1.5
+  fxCtx = fxCanvas.getContext('2d');
 
   await loadLevels();
 
