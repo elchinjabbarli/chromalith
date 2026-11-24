@@ -8,7 +8,7 @@ import { BIOMES, biomeFor, TOTAL_LEVELS } from './core/difficulty';
 import { Renderer } from './render/renderer';
 import { Session, Shift } from './session';
 import { loadSave, persistSave, SaveState, todayKey } from './systems/save';
-import { setLang, getLang, t, Lang } from './systems/i18n';
+import { setLang, getLang, t, Lang, LANGS, isRTL, langMeta } from './systems/i18n';
 import { sfx } from './systems/audio';
 import { platform, setHapticsEnabled } from './systems/platform';
 import {
@@ -381,8 +381,9 @@ function renderSettings(): void {
   $('set-sfx').classList.toggle('on', save.sfx);
   $('set-haptics').classList.toggle('on', save.haptics);
   $('set-version').textContent = `v${VERSION}`;
-  for (const l of ['en', 'tr', 'az'] as const) {
-    $('set-lang-' + l).classList.toggle('sel', save.lang === l);
+  for (const m of LANGS) {
+    const el = $('set-lang-' + m.code);
+    if (el) el.classList.toggle('sel', save.lang === m.code);
   }
   $('set-lang-auto').classList.toggle('sel', save.lang === 'auto');
 }
@@ -617,6 +618,9 @@ async function boot(): Promise<void> {
 
   window.addEventListener('resize', layoutCanvas);
 
+  /* language picker buttons must exist before any on() wiring below */
+  buildLangPicker();
+
   /* --- buttons --- */
   const on = (id: string, fn: () => void): void => {
     $(id).addEventListener('click', () => {
@@ -658,10 +662,11 @@ async function boot(): Promise<void> {
     persistSave(save);
     renderSettings();
   });
-  for (const l of ['en', 'tr', 'az'] as const) {
-    on('set-lang-' + l, () => {
-      save.lang = l;
-      setLang(l);
+  for (const m of LANGS) {
+    on('set-lang-' + m.code, () => {
+      save.lang = m.code;
+      setLang(m.code);
+      applyTextDirection();
       persistSave(save);
       renderSettings();
       renderMainMenu();
@@ -671,6 +676,7 @@ async function boot(): Promise<void> {
   on('set-lang-auto', () => {
     save.lang = 'auto';
     setLang('auto');
+    applyTextDirection();
     persistSave(save);
     renderSettings();
     renderMainMenu();
@@ -744,9 +750,31 @@ async function boot(): Promise<void> {
   raf = requestAnimationFrame(loop);
 }
 
+/** Build the 18-language picker inside #lang-list (Auto button stays first). */
+function buildLangPicker(): void {
+  const list = document.getElementById('lang-list');
+  if (!list) return;
+  for (const m of LANGS) {
+    const b = document.createElement('button');
+    b.className = 'lang-btn';
+    b.id = 'set-lang-' + m.code;
+    b.title = m.english;
+    b.textContent = m.native;
+    b.setAttribute('lang', m.bcp47);
+    list.appendChild(b);
+  }
+}
+
+/** Set html dir + lang for RTL languages (Arabic, Urdu). */
+function applyTextDirection(): void {
+  document.documentElement.dir = isRTL() ? 'rtl' : 'ltr';
+  document.documentElement.lang = langMeta(getLang()).bcp47;
+}
+
 /** translate static DOM labels that exist before any screen render */
 function retranslateStatics(): void {
-  document.documentElement.lang = getLang();
+  applyTextDirection();
+  document.documentElement.lang = langMeta(getLang()).bcp47;
   document.querySelectorAll('[data-i18n]').forEach(el => {
     const key = el.getAttribute('data-i18n')!;
     el.textContent = t(key as never);

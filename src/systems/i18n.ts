@@ -1,311 +1,81 @@
-/** i18n — EN (default), TR, AZ. All UI strings live here. */
+/** i18n — 18 languages. Locale dictionaries live in ./locales/. */
 
-export type Lang = 'en' | 'tr' | 'az';
+import { en, Dict } from './locales/en';
+import { zh } from './locales/zh';
+import { hi } from './locales/hi';
+import { es } from './locales/es';
+import { ar } from './locales/ar';
+import { fr } from './locales/fr';
+import { bn } from './locales/bn';
+import { pt } from './locales/pt';
+import { id } from './locales/id';
+import { ur } from './locales/ur';
+import { ru } from './locales/ru';
+import { de } from './locales/de';
+import { ja } from './locales/ja';
+import { pcm } from './locales/pcm';
+import { mr } from './locales/mr';
+import { te } from './locales/te';
+import { tr } from './locales/tr';
+import { az } from './locales/az';
 
-const en = {
-  title: 'CHROMALITH',
-  tagline: 'Weave the light',
-  play: 'Play',
-  continue: 'Continue',
-  settings: 'Settings',
-  shop: 'Shop',
-  help: 'How to play',
-  back: 'Back',
-  close: 'Close',
-  level: 'Level',
-  moves: 'moves',
-  par: 'par',
-  gems: 'gems',
-  biome1: 'Dawnshore',
-  biome2: 'Embergrove',
-  biome3: 'Tidecavern',
-  biome4: 'Fungalight',
-  biome5: 'Frostreach',
-  biome6: 'Duskspire',
-  biome7: 'Voidmere',
-  biome8: 'Starfall',
-  biome9: 'Prismdepths',
-  biome10: 'Luminary',
-  win: 'Radiant!',
-  perfect: 'Flawless weave',
-  good: 'Bright solve',
-  ok: 'Solved',
-  stars3: 'Within par — flawless',
-  stars2: 'A little over par',
-  stars1: 'Solved — keep weaving',
-  undo: 'Undo',
-  restart: 'Restart',
-  hint: 'Insight',
-  solve: 'Lumo solves',
-  hintDesc: 'Reveal one helpful shift',
-  solveDesc: 'Watch Lumo finish this level',
-  hintCost: '25 gems or watch an ad',
-  solveCost: '90 gems or watch an ad',
-  gemsEarned: '+{n} gems',
-  x2gems: 'Double it',
-  watchAd: 'Watch ad',
-  notNow: 'Not now',
-  next: 'Next',
-  retry: 'Retry',
-  map: 'Map',
-  pause: 'Pause',
-  resume: 'Resume',
-  music: 'Music',
-  sfx: 'Sounds',
-  haptics: 'Vibration',
-  language: 'Language',
-  langAuto: 'Auto',
-  resetProgress: 'Reset progress',
-  confirmReset: 'Reset all progress? This cannot be undone.',
-  yes: 'Yes',
-  no: 'No',
-  confirmRestart: 'Restart this level?',
-  resetDone: 'Progress cleared',
-  dailyGift: 'Daily gift',
-  claim: 'Claim',
-  claimed: 'Come back tomorrow',
-  dailyAmount: '+50 gems',
-  shopRemoveAds: 'Remove ads',
-  shopRemoveAdsDesc: 'No more interstitials, forever',
-  shopPack1: 'Pocket of gems',
-  shopPack1Desc: '500 gems',
-  shopPack2: 'Chest of gems',
-  shopPack2Desc: '1500 gems — best value',
-  shopPack3: 'Vault of gems',
-  shopPack3Desc: '4000 gems',
-  webNote: 'Web demo: granted for free. Purchases are real in the App Store version.',
-  tut1: 'Drag a row or column to slide it. Light must reach every crystal.',
-  tut2: 'Mirrors bend light. Bring the beam to the crystal.',
-  tut3: 'Drag this line in the arrow direction.',
-  devSource: 'Emetter — sends a beam of its color.',
-  devSink: 'Crystal — must receive exactly its color.',
-  devMirror: 'Mirror — bends the beam 90°.',
-  devSplitter: 'Half-mirror — beam passes and reflects.',
-  devFilter: 'Glass — only matching colors pass.',
-  devPrism: 'Prism — splits white into red, green, blue.',
-  devMixer: 'Mixer — merges incoming beams into one.',
-  devBlock: 'Stone — blocks every beam.',
-  colorsNote: 'Colors mix: red + green = yellow, red + blue = magenta, green + blue = cyan, all = white.',
-  privacy: 'Privacy',
-  about: 'About',
-  version: 'Version',
-  newBiome: 'New region unlocked',
-  locked: 'Locked',
-  adNote: 'Ads appear only in the App Store version.',
-  progress: 'progress',
-  statShifts: 'shifts made',
-  statLevels: 'levels solved',
-  statStars: 'stars earned',
-  loading: 'Weaving light…',
-  levelPackBadge: '1000 levels',
+export type Lang =
+  | 'en' | 'zh' | 'hi' | 'es' | 'ar' | 'fr' | 'bn' | 'pt' | 'id'
+  | 'ur' | 'ru' | 'de' | 'ja' | 'pcm' | 'mr' | 'te' | 'tr' | 'az';
+
+export interface LangMeta {
+  code: Lang;
+  /** name in its own script, for the picker */
+  native: string;
+  /** english name, for accessibility */
+  english: string;
+  /** BCP-47 for html lang */
+  bcp47: string;
+  rtl: boolean;
+}
+
+export const LANGS: readonly LangMeta[] = [
+  { code: 'en',  native: 'English',            english: 'English',             bcp47: 'en',    rtl: false },
+  { code: 'zh',  native: '中文',               english: 'Chinese (Simplified)', bcp47: 'zh-CN', rtl: false },
+  { code: 'hi',  native: 'हिन्दी',              english: 'Hindi',               bcp47: 'hi',    rtl: false },
+  { code: 'es',  native: 'Español',            english: 'Spanish',             bcp47: 'es',    rtl: false },
+  { code: 'ar',  native: 'العربية',            english: 'Arabic',              bcp47: 'ar',    rtl: true },
+  { code: 'fr',  native: 'Français',           english: 'French',              bcp47: 'fr',    rtl: false },
+  { code: 'bn',  native: 'বাংলা',              english: 'Bengali',             bcp47: 'bn',    rtl: false },
+  { code: 'pt',  native: 'Português',          english: 'Portuguese',          bcp47: 'pt',    rtl: false },
+  { code: 'id',  native: 'Bahasa Indonesia',   english: 'Indonesian',          bcp47: 'id',    rtl: false },
+  { code: 'ur',  native: 'اردو',               english: 'Urdu',                bcp47: 'ur',    rtl: true },
+  { code: 'ru',  native: 'Русский',            english: 'Russian',             bcp47: 'ru',    rtl: false },
+  { code: 'de',  native: 'Deutsch',            english: 'German',              bcp47: 'de',    rtl: false },
+  { code: 'ja',  native: '日本語',              english: 'Japanese',            bcp47: 'ja',    rtl: false },
+  { code: 'pcm', native: 'Naija (Pidgin)',     english: 'Nigerian Pidgin',     bcp47: 'pcm',   rtl: false },
+  { code: 'mr',  native: 'मराठी',               english: 'Marathi',             bcp47: 'mr',    rtl: false },
+  { code: 'te',  native: 'తెలుగు',              english: 'Telugu',              bcp47: 'te',    rtl: false },
+  { code: 'tr',  native: 'Türkçe',             english: 'Turkish',             bcp47: 'tr',    rtl: false },
+  { code: 'az',  native: 'Azərbaycanca',       english: 'Azerbaijani',         bcp47: 'az',    rtl: false },
+];
+
+const DICTS: Record<Lang, Dict> = {
+  en, zh, hi, es, ar, fr, bn, pt, id, ur, ru, de, ja, pcm, mr, te, tr, az,
 };
-
-type Dict = typeof en;
-
-const tr: Dict = {
-  title: 'CHROMALITH',
-  tagline: 'Işığı örgüle',
-  play: 'Oyna',
-  continue: 'Devam et',
-  settings: 'Ayarlar',
-  shop: 'Dükkan',
-  help: 'Nasıl oynanır',
-  back: 'Geri',
-  close: 'Kapat',
-  level: 'Seviye',
-  moves: 'hamle',
-  par: 'par',
-  gems: 'elmas',
-  biome1: 'Şafakkıyısı',
-  biome2: 'Korormanı',
-  biome3: 'Gelmağarası',
-  biome4: 'Mantarişığı',
-  biome5: 'Kıyısıbuzul',
-  biome6: 'Alacakaranlık',
-  biome7: 'Boşlukgölü',
-  biome8: 'Yıldızdüşü',
-  biome9: 'Prizmaderinlik',
-  biome10: 'Luminar',
-  win: 'Işıltılı!',
-  perfect: 'Kusursuz örgü',
-  good: 'Parlak çözüm',
-  ok: 'Çözüldü',
-  stars3: 'Par içinde — kusursuz',
-  stars2: 'Parı biraz aştın',
-  stars1: 'Çözüldü — örgüye devam',
-  undo: 'Geri al',
-  restart: 'Yeniden',
-  hint: 'Sezgi',
-  solve: 'Lumo çözsün',
-  hintDesc: 'Faydalı bir kaydırmayı göster',
-  solveDesc: 'Lumo bu seviyeyi bitirsin',
-  hintCost: '25 elmas ya da reklam izle',
-  solveCost: '90 elmas ya da reklam izle',
-  gemsEarned: '+{n} elmas',
-  x2gems: 'İkiye katla',
-  watchAd: 'Reklam izle',
-  notNow: 'Şimdi değil',
-  next: 'Sonraki',
-  retry: 'Tekrar',
-  map: 'Harita',
-  pause: 'Duraklat',
-  resume: 'Sürdür',
-  music: 'Müzik',
-  sfx: 'Sesler',
-  haptics: 'Titreşim',
-  language: 'Dil',
-  langAuto: 'Otomatik',
-  resetProgress: 'İlerlemeyi sıfırla',
-  confirmReset: 'Tüm ilerleme silinsin mi? Bu geri alınamaz.',
-  yes: 'Evet',
-  no: 'Hayır',
-  confirmRestart: 'Bu seviye yeniden başlansın mı?',
-  resetDone: 'İlerleme temizlendi',
-  dailyGift: 'Günlük hediye',
-  claim: 'Al',
-  claimed: 'Yarın yine gel',
-  dailyAmount: '+50 elmas',
-  shopRemoveAds: 'Reklamları kaldır',
-  shopRemoveAdsDesc: 'Araya giden reklamlar sonsuza dek yok',
-  shopPack1: 'Elmas keseciği',
-  shopPack1Desc: '500 elmas',
-  shopPack2: 'Elmas sandığı',
-  shopPack2Desc: '1500 elmas — en avantajlı',
-  shopPack3: 'Elmas kasası',
-  shopPack3Desc: '4000 elmas',
-  webNote: 'Web demosu: ücretsiz verildi. Satın almalar App Store sürümünde gerçektir.',
-  tut1: 'Bir satırı ya da sütunu sürükle. Işık her kristale ulaşmalı.',
-  tut2: 'Aynalar ışığı kırpar. Işını kristale getir.',
-  tut3: 'Bu çizgiyi ok yönünde sürükle.',
-  devSource: 'Yayıcı — kendi renginde bir ışın gönderir.',
-  devSink: 'Kristal — tam olarak kendi rengini almalı.',
-  devMirror: 'Ayna — ışını 90° kıvırır.',
-  devSplitter: 'Yarım ayna — ışın hem geçer hem yansır.',
-  devFilter: 'Cam — yalnız eşleşen renkler geçer.',
-  devPrism: 'Prizma — beyazı kırmızı, yeşil, maviye ayırır.',
-  devMixer: 'Karıştırıcı — gelen ışınları tek ışında birleştirir.',
-  devBlock: 'Taş — her ışını keser.',
-  colorsNote: 'Renkler karışır: kırmızı + yeşil = sarı, kırmızı + mavi = mor, yeşil + mavi = camgöbeği, hepsi = beyaz.',
-  privacy: 'Gizlilik',
-  about: 'Hakkında',
-  version: 'Sürüm',
-  newBiome: 'Yeni bölge açıldı',
-  locked: 'Kilitli',
-  adNote: 'Reklamlar yalnızca App Store sürümünde görünür.',
-  progress: 'ilerleme',
-  statShifts: 'kaydırma',
-  statLevels: 'çözülen seviye',
-  statStars: 'kazanılan yıldız',
-  loading: 'Işık örgüleniyor…',
-  levelPackBadge: '1000 seviye',
-};
-
-const az: Dict = {
-  title: 'CHROMALITH',
-  tagline: 'İşığı toxu',
-  play: 'Oyna',
-  continue: 'Davam et',
-  settings: 'Tənzimləmələr',
-  shop: 'Mağaza',
-  help: 'Necə oynanılır',
-  back: 'Geri',
-  close: 'Bağla',
-  level: 'Səviyyə',
-  moves: 'gediş',
-  par: 'par',
-  gems: 'almaz',
-  biome1: 'Şəfəqsahili',
-  biome2: 'Körməşəsi',
-  biome3: 'Qelmağarası',
-  biome4: 'Göbələkişığı',
-  biome5: 'Buzuluçatı',
-  biome6: 'Alatoranıqlıq',
-  biome7: 'Boşluqqolu',
-  biome8: 'Ulduzdüşəni',
-  biome9: 'Prizmadərinliyi',
-  biome10: 'Luminar',
-  win: 'İşıltılı!',
-  perfect: 'Qüsursuz toxunuş',
-  good: 'Parlaq həll',
-  ok: 'Həll olundu',
-  stars3: 'Par daxilində — qüsursuz',
-  stars2: 'Parı bir az aşdın',
-  stars1: 'Həll olundu — toxumağa davam',
-  undo: 'Geri al',
-  restart: 'Yenidən',
-  hint: 'Sezg',
-  solve: 'Lumo həll etsin',
-  hintDesc: 'Faydalı bir sürüşməni göstər',
-  solveDesc: 'Lumo bu səviyyəni bitsin',
-  hintCost: '25 almaz və ya reklam izlə',
-  solveCost: '90 almaz və ya reklam izlə',
-  gemsEarned: '+{n} almaz',
-  x2gems: 'İkiqatla',
-  watchAd: 'Reklam izlə',
-  notNow: 'İndi yox',
-  next: 'Növbəti',
-  retry: 'Təkrar',
-  map: 'Xəritə',
-  pause: 'Fasilə',
-  resume: 'Davam',
-  music: 'Musiqi',
-  sfx: 'Səslər',
-  haptics: 'Titrəmə',
-  language: 'Dil',
-  langAuto: 'Avtomatik',
-  resetProgress: 'İrəliləyişi sıfırla',
-  confirmReset: 'Bütün irəliləyiş silinsin? Bu geri qaytarıla bilməz.',
-  yes: 'Bəli',
-  no: 'Xeyr',
-  confirmRestart: 'Bu səviyyə yenidən başlansın?',
-  resetDone: 'İrəliləyiş təmizləndi',
-  dailyGift: 'Gündəlik hədiyyə',
-  claim: 'Al',
-  claimed: 'Sabah yenə gəl',
-  dailyAmount: '+50 almaz',
-  shopRemoveAds: 'Reklamları kaldır',
-  shopRemoveAdsDesc: 'Aralıq reklamları əbədi yox',
-  shopPack1: 'Almaz kisəsi',
-  shopPack1Desc: '500 almaz',
-  shopPack2: 'Almaz sandığı',
-  shopPack2Desc: '1500 almaz — ən sərfəli',
-  shopPack3: 'Almaz xəzinəsi',
-  shopPack3Desc: '4000 almaz',
-  webNote: 'Veb demosu: pulsuz verildi. Satın almalar App Store versiyasında gerçəkdir.',
-  tut1: 'Bir sətri və ya sütunu sürüklə. İşıq hər kristala çatmalıdır.',
-  tut2: 'Güzgülər işığı qırır. Şüanı kristala gətir.',
-  tut3: 'Bu xətti ox istiqamətində sürüklə.',
-  devSource: 'Yayımlayıcı — öz rəngində şüa göndərir.',
-  devSink: 'Kristal — dəqiq öz rəngini almalıdır.',
-  devMirror: 'Güzgü — şüanı 90° qırır.',
-  devSplitter: 'Yarım güzgü — şüa həm keçir həm əks olunur.',
-  devFilter: 'Şüşə — yalnız uyğun rənglər keçir.',
-  devPrism: 'Prizma — ağanı qırmızı, yaşıl, maviyə ayırır.',
-  devMixer: 'Qarışdırıcı — gələn şüaları tək şüada birləşdirir.',
-  devBlock: 'Daş — hər şüanı kəsir.',
-  colorsNote: 'Rənglər qarışır: qırmızı + yaşıl = sarı, qırmızı + mavi = bənövşəyi, yaşıl + mavi = firuzəyi, hamısı = ağ.',
-  privacy: 'Məxfilik',
-  about: 'Haqqında',
-  version: 'Versiya',
-  newBiome: 'Yeni bölgə açıldı',
-  locked: 'Kilitli',
-  adNote: 'Reklamlar yalnız App Store versiyasında görünür.',
-  progress: 'irəliləyiş',
-  statShifts: 'sürüşmə',
-  statLevels: 'həll olunan səviyyə',
-  statStars: 'qazanılan ulduz',
-  loading: 'İşık toxunur…',
-  levelPackBadge: '1000 səviyyə',
-};
-
-const DICTS: Record<Lang, Dict> = { en, tr, az };
 
 let current: Lang = 'en';
 
 export function detectLang(): Lang {
-  const nav = typeof navigator !== 'undefined' ? navigator.language.toLowerCase() : 'en';
-  if (nav.startsWith('tr')) return 'tr';
-  if (nav.startsWith('az')) return 'az';
+  if (typeof navigator === 'undefined') return 'en';
+  const candidates: string[] = [];
+  if (navigator.languages) candidates.push(...navigator.languages);
+  if (navigator.language) candidates.push(navigator.language);
+  for (const raw of candidates) {
+    const nav = raw.toLowerCase();
+    for (const meta of LANGS) {
+      if (nav.startsWith(meta.code)) return meta.code;
+    }
+    // regional aliases not covered by the primary code
+    if (nav.startsWith('zh-hant') || nav.startsWith('zh-tw') || nav.startsWith('zh-hk')) return 'zh';
+    if (nav.startsWith('pt-br')) return 'pt';
+    if (nav.startsWith('cmn')) return 'zh';
+  }
   return 'en';
 }
 
@@ -315,6 +85,14 @@ export function setLang(l: Lang | 'auto'): void {
 
 export function getLang(): Lang {
   return current;
+}
+
+export function isRTL(): boolean {
+  return LANGS.find(m => m.code === current)?.rtl ?? false;
+}
+
+export function langMeta(l: Lang): LangMeta {
+  return LANGS.find(m => m.code === l) ?? LANGS[0];
 }
 
 /** t('gemsEarned', {n: 40}) → "+40 gems" */

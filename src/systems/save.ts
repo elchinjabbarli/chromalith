@@ -1,8 +1,10 @@
 /** Persistent save state (localStorage with versioned migration). */
 
+import { Lang } from './i18n';
+
 export interface SaveState {
   v: number;
-  lang: 'en' | 'tr' | 'az' | 'auto';
+  lang: Lang | 'auto';
   music: boolean;
   sfx: boolean;
   haptics: boolean;

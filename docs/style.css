@@ -512,18 +512,39 @@ body {
 .set-row.toggle.on .knob::after { left: 23px; }
 .set-row.danger { color: var(--danger); }
 .set-label { padding: 14px 16px 4px; color: var(--text-dim); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.12em; }
-.lang-row { display: flex; gap: 8px; padding: 4px 12px 14px; }
+.lang-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+  gap: 7px;
+  padding: 6px 12px 14px;
+  max-height: 44dvh;
+  overflow-y: auto;
+}
 .lang-btn {
-  flex: 1;
-  padding: 10px 4px;
+  padding: 10px 6px;
   border-radius: 12px;
   border: 1px solid var(--panel-border);
   background: rgba(255, 255, 255, 0.04);
   color: var(--text);
   font-weight: 620;
+  font-size: 0.88rem;
   cursor: pointer;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s;
 }
-.lang-btn.sel { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 18%, transparent); }
+.lang-btn:active { transform: scale(0.96); }
+.lang-btn.sel {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+/* selected language gets a small check glyph via ::after-free layout */
+.lang-btn .lang-check { color: var(--accent); margin-inline-start: 4px; }
+
+[dir="rtl"] .lang-list { direction: rtl; }
 .set-meta { display: flex; justify-content: space-between; color: var(--text-dim); font-size: 0.8rem; padding: 0 4px; }
 .set-meta a { color: var(--accent); text-decoration: none; }
 

@@ -1,0 +1,95 @@
+title:CHROMALITH
+tagline:Weave the light
+play:Play
+continue:Continue
+settings:Settings
+shop:Shop
+help:How to play
+back:Back
+close:Close
+level:Level
+moves:moves
+par:par
+gems:gems
+biome1:Dawnshore
+biome2:Embergrove
+biome3:Tidecavern
+biome4:Fungalight
+biome5:Frostreach
+biome6:Duskspire
+biome7:Voidmere
+biome8:Starfall
+biome9:Prismdepths
+biome10:Luminary
+win:Radiant!
+perfect:Flawless weave
+good:Bright solve
+ok:Solved
+stars3:Within par — flawless
+stars2:A little over par
+stars1:Solved — keep weaving
+undo:Undo
+restart:Restart
+hint:Insight
+solve:Lumo solves
+hintDesc:Reveal one helpful shift
+solveDesc:Watch Lumo finish this level
+hintCost:25 gems or watch an ad
+solveCost:90 gems or watch an ad
+gemsEarned:+{n} gems
+x2gems:Double it
+watchAd:Watch ad
+notNow:Not now
+next:Next
+retry:Retry
+map:Map
+pause:Pause
+resume:Resume
+music:Music
+sfx:Sounds
+haptics:Vibration
+language:Language
+langAuto:Auto
+resetProgress:Reset progress
+confirmReset:Reset all progress? This cannot be undone.
+yes:Yes
+no:No
+confirmRestart:Restart this level?
+resetDone:Progress cleared
+dailyGift:Daily gift
+claim:Claim
+claimed:Come back tomorrow
+dailyAmount:+50 gems
+shopRemoveAds:Remove ads
+shopRemoveAdsDesc:No more interstitials, forever
+shopPack1:Pocket of gems
+shopPack1Desc:500 gems
+shopPack2:Chest of gems
+shopPack2Desc:1500 gems — best value
+shopPack3:Vault of gems
+shopPack3Desc:4000 gems
+webNote:Web demo: granted for free. Purchases are real in the App Store version.
+tut1:Drag a row or column to slide it. Light must reach every crystal.
+tut2:Mirrors bend light. Bring the beam to the crystal.
+tut3:Drag this line in the arrow direction.
+devSource:Emetter — sends a beam of its color.
+devSink:Crystal — must receive exactly its color.
+devMirror:Mirror — bends the beam 90°.
+devSplitter:Half-mirror — beam passes and reflects.
+devFilter:Glass — only matching colors pass.
+devPrism:Prism — splits white into red, green, blue.
+devMixer:Mixer — merges incoming beams into one.
+devBlock:Stone — blocks every beam.
+colorsNote:Colors mix: red + green = yellow, red + blue = magenta, green + blue = cyan, all = white.
+privacy:Privacy
+about:About
+version:Version
+newBiome:New region unlocked
+locked:Locked
+adNote:Ads appear only in the App Store version.
+progress:progress
+statShifts:shifts made
+statLevels:levels solved
+statStars:stars earned
+loading:Weaving light…
+levelPackBadge:1000 levels
