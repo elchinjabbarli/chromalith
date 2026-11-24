@@ -136,7 +136,6 @@ function startLevel(n: number): void {
   }
   sfx.ambient(BIOMES.indexOf(biome));
   showScreen('screen-game');
-  maybeShowTutorial(n);
   requestAnimationFrame(() => {
     layoutCanvas();
     session?.renderer.layout(board, window.devicePixelRatio || 1);
@@ -261,45 +260,30 @@ function onPointerMove(e: PointerEvent): void {
       drag.lineIndex = drag.cellX;
     }
   }
-  drag.dist = drag.axis === 0 ? dx : dy;
-  // live preview: offset the row/col visually
-  previewLine(drag.axis, drag.lineIndex, drag.dist);
+  const dist = drag.axis === 0 ? dx : dy;
+  drag.dist = dist;
+  // live conveyor preview follows the finger
+  session.dragTo(drag.axis, drag.lineIndex, dist);
 }
 
 function onPointerUp(e: PointerEvent): void {
   if (e.pointerId !== drag.pointerId) return;
   if (!drag.active || !session) {
     drag.active = false;
+    drag.pointerId = -1;
     return;
   }
   drag.active = false;
   drag.pointerId = -1;
-  clearPreview();
   if (drag.axis === null || drag.lineIndex < 0) return;
-  const cell = renderer.cell;
-  const steps = Math.round(drag.dist / cell);
-  if (steps !== 0) {
-    session.shift(drag.axis, drag.lineIndex, steps);
-  }
+  session.endDrag(drag.axis, drag.lineIndex, drag.dist);
 }
 
-/** temporary visual offset of the dragged line */
-function previewLine(axis: 0 | 1, index: number, dist: number): void {
-  if (!session) return;
-  const r = renderer;
-  const b = session.board;
-  const len = axis === 0 ? b.w : b.h;
-  const map = new Map<number, { dx: number; dy: number }>();
-  for (let i = 0; i < len; i++) {
-    const idx = axis === 0 ? index * b.w + i : i * b.w + index;
-    if (b.cells[idx].fixed) continue;
-    map.set(idx, axis === 0 ? { dx: dist, dy: 0 } : { dx: 0, dy: dist });
-  }
-  r.previewOffsets = map;
-}
-
-function clearPreview(): void {
-  renderer.previewOffsets = null;
+function onPointerCancel(e: PointerEvent): void {
+  if (e.pointerId !== drag.pointerId) return;
+  drag.active = false;
+  drag.pointerId = -1;
+  if (session) session.cancelDrag();
 }
 
 /* ------------------------------------------------------------------ */
@@ -560,7 +544,7 @@ function loop(now: number): void {
   renderer.step(dt);
   if (session && $('screen-game').classList.contains('active')) {
     const sim = session.sim;
-    renderer.draw(session.board, sim, session.biome, session.anim, session.solvedSet);
+    renderer.draw(session.board, sim, session.biome, session.solvedSet);
     // Lumo idles near the board corner
     const dpr = window.devicePixelRatio || 1;
     const W = canvas.width / dpr;
@@ -592,7 +576,7 @@ async function boot(): Promise<void> {
   canvas.addEventListener('pointerdown', onPointerDown);
   canvas.addEventListener('pointermove', onPointerMove);
   canvas.addEventListener('pointerup', onPointerUp);
-  canvas.addEventListener('pointercancel', onPointerUp);
+  canvas.addEventListener('pointercancel', onPointerCancel);
 
   // audio unlock on first interaction
   const unlock = (): void => {
@@ -612,7 +596,9 @@ async function boot(): Promise<void> {
     });
   };
 
-  on('mm-play', () => { startLevel(save.level); });  on('mm-settings', () => { renderSettings(); showScreen('screen-settings'); });
+  on('mm-play', () => { startLevel(save.level); maybeShowTutorial(save.level); });
+
+  on('mm-settings', () => { renderSettings(); showScreen('screen-settings'); });
   on('mm-shop', () => { renderShop(); showScreen('screen-shop'); });
   on('mm-help', () => { renderHelp(); showScreen('screen-help'); });
   on('mm-daily', () => { renderDaily(); showScreen('screen-daily'); });
@@ -693,7 +679,11 @@ async function boot(): Promise<void> {
   on('pause-settings', () => { returnScreen = 'screen-pause'; renderSettings(); showScreen('screen-settings'); });
 
   on('win-next', () => {
-    if (session) startLevel(Math.min(TOTAL_LEVELS, session.levelNum + 1));
+    if (session) {
+      const next = Math.min(TOTAL_LEVELS, session.levelNum + 1);
+      startLevel(next);
+      maybeShowTutorial(next);
+    }
   });
   on('win-map', () => { returnScreen = 'screen-win'; renderMap(); showScreen('screen-map'); });
   on('win-x2', async () => {

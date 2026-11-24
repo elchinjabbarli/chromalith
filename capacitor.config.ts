@@ -4,7 +4,7 @@ const config: CapacitorConfig = {
   appId: 'com.elchinjabbarli.chromalith',
   appName: 'Chromalith',
   webDir: 'docs',
-  version: '1.1.1',
+  version: '1.1.2',
   ios: {
     contentInset: 'automatic',
     backgroundColor: '#0d1220',

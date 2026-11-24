@@ -7,10 +7,18 @@ import { Board, Cell, Color, COLOR_HEX } from '../core/grid';
 import { SimResult, BeamSeg } from '../core/sim';
 import { Biome } from '../core/difficulty';
 
-export interface Anim {
-  /** per-cell offset in px while a line slides: index → {dx, dy, alpha} */
-  moving: Map<number, { dx: number; dy: number }>;
-  time: number;
+/** A line currently sliding (drag or commit glide), drawn as a conveyor. */
+export interface SlideState {
+  axis: 0 | 1;
+  index: number;
+  /** movable cell indices of the line, in line order */
+  slots: number[];
+  /** line-coordinate (col for rows, row for cols) of each slot */
+  positions: number[];
+  /** current visual offset per slot, in CELLS (conveyor-wrapped when drawn) */
+  offsets: number[];
+  /** cells excluded from the static pass while sliding */
+  skip: Set<number>;
 }
 
 export interface Particle {
@@ -33,8 +41,10 @@ export class Renderer {
   hintCells = new Set<number>();
   hintPulse = 0;
   solvedFlash = 0;
-  /** live drag preview: cell index → px offset */
-  previewOffsets: Map<number, { dx: number; dy: number }> | null = null;
+  /** active line slide (drag preview + commit glide), conveyor-style */
+  slide: SlideState | null = null;
+  /** beams dim while a line slides (eased in step()) */
+  beamFade = 1;
   private lumoBlink = 0;
 
   constructor(private canvas: HTMLCanvasElement) {
@@ -65,6 +75,11 @@ export class Renderer {
     this.lumoBlink += dt;
     if (this.hintPulse > 0) this.hintPulse = Math.max(0, this.hintPulse - dt);
     if (this.solvedFlash > 0) this.solvedFlash = Math.max(0, this.solvedFlash - dt);
+    // beams dim quickly while sliding, restore quickly after
+    const target = this.slide ? 0 : 1;
+    this.beamFade += (target - this.beamFade) * Math.min(1, dt * 14);
+    if (this.beamFade > 0.995) this.beamFade = 1;
+    if (this.beamFade < 0.005) this.beamFade = 0;
     for (const p of this.particles) {
       p.life -= dt;
       p.x += p.vx * dt;
@@ -99,7 +114,7 @@ export class Renderer {
 
   /* -------------------------------------------------------------- */
 
-  draw(b: Board, sim: SimResult, biome: Biome, anim?: Anim, solvedSet?: Set<number>): void {
+  draw(b: Board, sim: SimResult, biome: Biome, solvedSet?: Set<number>): void {
     const { ctx } = this;
     const dpr = window.devicePixelRatio || 1;
     const W = this.canvas.width / dpr;
@@ -109,21 +124,40 @@ export class Renderer {
 
     this.drawBoardBase(b, biome);
 
-    // beams under devices
-    this.drawBeams(b, sim, anim);
+    // beams under devices (dim while sliding)
+    this.drawBeams(sim);
 
-    // cells
+    const slide = this.slide;
+    if (slide) {
+      // conveyor pass: each movable cell offset along the line, wrapped by
+      // the line LENGTH so cells leaving one edge re-enter at the other
+      ctx.save();
+      this.clipLine(b, slide);
+      const len = slide.axis === 0 ? b.w : b.h;
+      for (let j = 0; j < slide.slots.length; j++) {
+        const idx = slide.slots[j];
+        const pos = slide.positions[j];
+        const x = slide.axis === 0 ? pos : slide.index;
+        const y = slide.axis === 0 ? slide.index : pos;
+        const lit = sim.litCells.has(idx);
+        for (const k of [0, -1, 1]) {
+          const linePos = pos + slide.offsets[j] + k * len;
+          if (linePos < -1 || linePos >= len) continue;
+          const dx = slide.axis === 0 ? (linePos - pos) * this.cell : 0;
+          const dy = slide.axis === 1 ? (linePos - pos) * this.cell : 0;
+          this.drawCell(b.cells[idx], x, y, lit, sim.sinkHits.get(idx), idx, solvedSet, dx, dy);
+        }
+      }
+      ctx.restore();
+    }
+
+    // static pass: every cell except the sliding line's movable slots
     for (let y = 0; y < b.h; y++) {
       for (let x = 0; x < b.w; x++) {
         const i = y * b.w + x;
-        const mv = anim?.moving.get(i);
-        const pv = this.previewOffsets?.get(i);
-        ctx.save();
-        if (mv) ctx.translate(mv.dx, mv.dy);
-        else if (pv) ctx.translate(pv.dx, pv.dy);
+        if (slide && slide.skip.has(i)) continue;
         const lit = sim.litCells.has(i);
         this.drawCell(b.cells[i], x, y, lit, sim.sinkHits.get(i), i, solvedSet);
-        ctx.restore();
       }
     }
 
@@ -140,6 +174,21 @@ export class Renderer {
     }
 
     this.drawParticles();
+  }
+
+  /** Clip to the board plate so sliding cells never leak outside it. */
+  private clipLine(b: Board, slide: SlideState): void {
+    const { ctx } = this;
+    const pad = 2;
+    ctx.beginPath();
+    if (slide.axis === 0) {
+      const y0 = this.oy + slide.index * this.cell;
+      ctx.rect(this.ox - pad, y0 - pad, b.w * this.cell + pad * 2, this.cell + pad * 2);
+    } else {
+      const x0 = this.ox + slide.index * this.cell;
+      ctx.rect(x0 - pad, this.oy - pad, this.cell + pad * 2, b.h * this.cell + pad * 2);
+    }
+    ctx.clip();
   }
 
   private drawBoardBase(b: Board, biome: Biome): void {
@@ -165,24 +214,21 @@ export class Renderer {
     void biome;
   }
 
-  private drawBeams(b: Board, sim: SimResult, anim?: Anim): void {
+  private drawBeams(sim: SimResult): void {
     const { ctx } = this;
-    if (anim && anim.moving.size > 0) return; // hide beams mid-slide
+    if (this.beamFade <= 0.02) return; // fully hidden mid-slide
     ctx.save();
     ctx.lineCap = 'round';
+    ctx.globalAlpha *= this.beamFade;
 
     const px = (v: number): number => this.ox + v * this.cell;
     const py = (v: number): number => this.oy + v * this.cell;
     for (const sp of sim.spans) {
       const color = COLOR_HEX[sp.c] ?? '#fff';
-      // drag preview shifts the beam with its cell
-      const pv = this.previewOffsets?.get(sp.cellIdx);
-      const dx = pv ? pv.dx : 0;
-      const dy = pv ? pv.dy : 0;
-      const x1 = px(sp.x1) + dx;
-      const y1 = py(sp.y1) + dy;
-      const x2 = px(sp.x2) + dx;
-      const y2 = py(sp.y2) + dy;
+      const x1 = px(sp.x1);
+      const y1 = py(sp.y1);
+      const x2 = px(sp.x2);
+      const y2 = py(sp.y2);
       // glow pass
       ctx.globalAlpha = 0.25;
       ctx.strokeStyle = color;
@@ -214,10 +260,12 @@ export class Renderer {
 
   private drawCell(
     c: Cell, x: number, y: number, lit: boolean, hit: Color | undefined,
-    idx: number, solvedSet?: Set<number>,
+    idx: number, solvedSet?: Set<number>, dx = 0, dy = 0,
   ): void {
     const { ctx } = this;
     const { cx, cy } = this.cellCenter(x, y);
+    ctx.save();
+    if (dx || dy) ctx.translate(dx, dy);
     const s = this.cell;
     const solved = solvedSet?.has(idx) ?? false;
 
